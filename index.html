@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#06010f">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>a birthday map</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="party.css">
+</head>
+<body>
+
+<main id="gate" class="hide">
+  <div class="gate-in">
+    <p class="eyebrow"><span>a birthday map</span><span class="tl" id="gate-role">guest</span></p>
+    <h1>the password, please</h1>
+    <form id="gate-form" autocomplete="off">
+      <input id="gate-pw" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="password" aria-label="password" maxlength="80" required>
+      <button type="submit" class="pill solid" id="gate-go">enter</button>
+    </form>
+    <p class="note" id="gate-note">one password, one room. ask the host.</p>
+  </div>
+</main>
+
+<div id="host" class="hide" data-mode="cloud">
+  <canvas id="stage" aria-hidden="true"></canvas>
+  <header id="top">
+    <p class="eyebrow"><span>a birthday map</span><span id="room-tag" class="tl"></span><span id="net-tag" class="tl"></span></p>
+    <h1 id="m-title">the cloud</h1>
+    <p id="m-sub" class="sub"></p>
+  </header>
+  <nav id="modes" aria-label="modes">
+    <div class="grp"><span class="gl">see</span>
+      <button data-mode="cloud"><b>1</b>the cloud</button>
+      <button data-mode="walk"><b>2</b>the walk</button>
+      <button data-mode="pairs"><b>4</b>pairs</button>
+      <button data-mode="list"><b>5</b>the playlist</button>
+      <button data-mode="join" class="join-btn"><b>j</b>join</button>
+    </div>
+    <div class="grp"><span class="gl">play</span>
+      <button data-mode="song"><b>3</b>whose song</button>
+      <button data-mode="hops"><b>6</b>how many hops</button>
+      <button data-mode="steer"><b>7</b>steer</button>
+      <button data-mode="twin"><b>8</b>taste twin</button>
+      <button data-mode="odd"><b>9</b>odd one out</button>
+      <button data-mode="bday"><b>0</b>the birthday round</button>
+    </div>
+  </nav>
+
+  <section id="p-cloud" class="panel">
+    <div class="facts" id="cloud-facts"></div>
+    <p class="now" id="cloud-now"></p>
+  </section>
+
+  <section id="col" class="panel">
+    <p class="hop" id="k-hop"></p>
+    <h2 id="k-name"></h2>
+    <p class="track" id="k-track"></p>
+    <p class="q" id="k-q"></p>
+    <div class="choices" id="k-choices"></div>
+    <p class="big-answer" id="k-ans"></p>
+    <p class="track" id="k-right"></p>
+    <div class="ctl" id="k-ctl">
+      <label class="walk-only"><span>from</span><select id="walk-a"></select></label>
+      <label class="walk-only"><span>to</span><select id="walk-b"></select></label>
+      <button class="pill walk-only" id="walk-go">walk</button>
+      <button class="pill solid" id="k-go"></button>
+    </div>
+  </section>
+
+  <aside id="board" class="panel" aria-label="points">
+    <h3>points</h3>
+    <ol id="board-ol"></ol>
+  </aside>
+
+  <section id="p-pairs" class="panel">
+    <div class="facts" id="pairs-facts"></div>
+    <p class="fine">score = 100 &times; (1 &minus; average hops to the other person&rsquo;s nearest pick &divide; 7). hops come from deezer&rsquo;s related-artist lists. a toy, not a measurement.</p>
+    <p class="track" id="pairs-hover"></p>
+  </section>
+
+  <section id="p-list" class="panel">
+    <div class="ctl">
+      <button class="pill solid" id="list-play">play the tour</button>
+      <button class="pill" id="list-copy">copy as text</button>
+      <button class="pill" id="list-spotify" disabled title="needs a spotify client id, see README.txt">spotify playlist: needs a client id</button>
+    </div>
+    <p class="fine" id="list-how">each pick sits next to the one fewest hops away (nearest neighbor, then 2-opt).</p>
+    <ol id="list-ol" class="tour"></ol>
+  </section>
+
+  <aside id="join" class="hide" aria-label="join">
+    <div class="qr-wrap"><canvas id="qr" width="10" height="10" aria-label="join code"></canvas></div>
+    <p class="link" id="join-link"></p>
+    <p class="note" id="join-pwnote">then the password. ask the host.</p>
+    <div class="row"><button class="pill small" id="join-pwqr" aria-pressed="false">password in the code: off</button></div>
+    <h3><span id="join-count">0</span> on the map</h3>
+    <ul id="join-list" class="people"></ul>
+    <div class="row">
+      <button class="pill small" id="join-add">add someone by hand</button>
+      <button class="pill small" id="join-save">save room file</button>
+      <label class="pill small file">open room file<input type="file" id="join-open" accept=".json,application/json"></label>
+      <button class="pill small" id="join-clear">clear room</button>
+    </div>
+    <h3>keepsake</h3>
+    <div class="row">
+      <button class="pill small" id="keep-png">save the poster <kbd>k</kbd></button>
+      <button class="pill small" id="keep-txt">save the playlist</button>
+    </div>
+    <p class="note" id="join-msg"></p>
+  </aside>
+
+  <footer id="foot">
+    <span id="foot-stats"></span>
+    <span class="keys">1&ndash;0 modes &middot; n next &middot; space go &middot; j join &middot; f full screen</span>
+  </footer>
+
+  <div id="sound" class="hide">
+    <div class="sound-in">
+      <button class="pill solid big" id="sound-go">tap for sound</button>
+      <p class="note">browsers stay quiet until you tap.</p>
+    </div>
+  </div>
+</div>
+
+<div id="guest" class="hide">
+  <header class="g-head">
+    <p class="eyebrow"><span>a birthday map</span><span id="g-code" class="tl"></span><span id="g-net" class="tl"></span></p>
+  </header>
+
+  <section id="g-form" class="g-sec">
+    <h1>put yourself on the map</h1>
+    <label class="field"><span>your name</span><input id="g-name" type="text" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="first name is plenty"></label>
+    <p class="field-h">up to three picks: an artist, a song, or a link</p>
+    <div id="g-picks" class="picker"></div>
+    <button class="pill solid wide" id="g-send" disabled>put me on the map</button>
+    <p class="note" id="g-msg"></p>
+  </section>
+
+  <section id="g-room" class="g-sec hide">
+    <h1 id="g-hi"></h1>
+    <ul id="g-mine" class="mine"></ul>
+    <p class="note" id="g-status"></p>
+    <div id="g-vote" class="hide">
+      <h2 id="g-q"></h2>
+      <div id="g-opts" class="opts"></div>
+      <p class="note" id="g-vmsg"></p>
+    </div>
+    <p class="g-res" id="g-res"></p>
+    <p class="g-score" id="g-score"></p>
+    <button class="pill small" id="g-edit">change my picks</button>
+  </section>
+</div>
+
+<div id="hand" class="hide" role="dialog" aria-modal="true" aria-label="add someone by hand">
+  <div class="hand-in">
+    <h2>add someone by hand</h2>
+    <label class="field"><span>name</span><input id="h-name" type="text" maxlength="24" autocomplete="off" placeholder="name"></label>
+    <div id="h-picks" class="picker"></div>
+    <div class="row">
+      <button class="pill solid" id="h-ok" disabled>add</button>
+      <button class="pill" id="h-cancel">cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

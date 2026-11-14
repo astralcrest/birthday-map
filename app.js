@@ -157,14 +157,36 @@ function guestList() {
 const nameOf = k => { const g = H.guests.get(k); return g ? g.n : ''; };
 
 // ---- persistence: sealed with the room key, never plain ----
-let saveT = 0;
+let saveT = 0, savedAt = 0;
 function saveSoon() {
   if (DEMO) return;
   clearTimeout(saveT);
   saveT = setTimeout(async () => {
-    const box = await seal(K.key, { guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played });
+    savedAt = Date.now();
+    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played });
     lsSet('party.room.' + K.roomId, JSON.stringify(box));
+    pushVault(box);
   }, 700);
+}
+// every phone in the room keeps this sealed copy, so the room outlives this tab and this computer
+function pushVault(box) {
+  if (!NET || !box) return;
+  const v = { t: savedAt, box };
+  if (JSON.stringify(v).length < 60000) NET.vault.set(v).catch(() => {});
+}
+async function adopt(v) {
+  if (!v || !v.box || !(v.t > savedAt)) return;
+  let d;
+  try { d = await unseal(K.key, v.box); } catch (e) { return; }
+  if (!(v.t > savedAt)) return;
+  for (const g of d.guests || []) if (g && g.k && !H.guests.has(g.k)) H.guests.set(g.k, g);
+  H.scores = Object.assign({}, d.scores || {}, H.scores);
+  for (const k in d.scores || {}) H.scores[k] = Math.max(H.scores[k] || 0, d.scores[k] || 0);
+  if (!H.hostKey) H.hostKey = d.hostKey || null;
+  if (!H.played.length) H.played = d.played || [];
+  H.gv++;
+  setText('#join-msg', `picked the room back up from a phone. ${guestList().length} people.`);
+  saveSoon(); dataChanged(); renderBoard(); publish();
 }
 async function restore() {
   const raw = lsGet('party.room.' + K.roomId);
@@ -173,6 +195,7 @@ async function restore() {
     const d = await unseal(K.key, JSON.parse(raw));
     for (const g of d.guests || []) H.guests.set(g.k, g);
     H.scores = d.scores || {}; H.hostKey = d.hostKey || null; H.played = d.played || [];
+    savedAt = d.t || 1;
   } catch (e) { /* a different password wrote this: ignore */ }
 }
 function upsertGuest(k, v, src) {
@@ -375,7 +398,7 @@ async function hostMain() {
   $('#host').classList.remove('hide');
   setText('#room-tag', DEMO ? 'demo' : 'room ' + K.code);
   player = new Player();
-  window.__party = { player, H, DV, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
+  window.__party = { player, H, DV, save: saveSoon, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
   if (DEMO) await loadDemo();
   else {
     await restore();
@@ -426,6 +449,15 @@ async function startNet() {
   NET.guest.onChange((v, ctx) => { if (!ctx.self && v) fromPeer(ctx.userId, v); });
   for (const [k, v] of Object.entries(NET.guest.getAll())) if (k !== NET.self.userId && v) fromPeer(k, v);
   NET.vote.onChange((v, ctx) => { if (!ctx.self) onVote(v, ctx); });
+  // ask the phones for the newest copy of the room; whoever holds a newer one answers
+  NET.keep.onChange((v, ctx) => { if (!ctx.self && v) adopt(v); });
+  for (const [k, v] of Object.entries(NET.keep.getAll())) if (k !== NET.self.userId && v) adopt(v);
+  NET.vault.onChange((v, ctx) => { if (!ctx.self && v) adopt(v); });
+  if (NET.vault.get()) adopt(NET.vault.get());
+  const ask = () => NET.need.set({ t: savedAt, at: Date.now() }).catch(() => {});
+  ask(); setTimeout(ask, 6000);
+  const raw = lsGet('party.room.' + K.roomId);
+  if (raw && savedAt) { try { pushVault(JSON.parse(raw)); } catch (e) { /* unreadable */ } }
   refreshOnline();
   publish();
 }
@@ -1741,7 +1773,7 @@ function setupJoin() {
   $('#join-clear').addEventListener('click', () => {
     if (!confirm('clear everyone and every point from this room?')) return;
     H.guests.clear(); H.scores = {}; H.hostKey = null; H.played = []; H.gv++;
-    if (!DEMO) lsDel('party.room.' + K.roomId);
+    saveSoon();
     dataChanged(); renderBoard();
   });
   $('#keep-png').addEventListener('click', savePoster);
@@ -1897,6 +1929,22 @@ async function guestMain() {
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');
   NETg.show.onChange(v => { lastShow = v; render(); });
+  // keep the host's sealed backup; hand it to a host that comes back with less
+  const vKey = 'party.vault.' + K.roomId;
+  let mine = null, offerT = 0;
+  try { mine = JSON.parse(lsGet(vKey) || 'null'); } catch (e) { mine = null; }
+  const hold = v => { if (v && v.box && (!mine || v.t > mine.t)) { mine = v; lsSet(vKey, JSON.stringify(v)); } };
+  NETg.vault.onChange(hold); hold(NETg.vault.get());
+  NETg.keep.onChange((v, ctx) => { if (!ctx.self) hold(v); });
+  const offer = n => {
+    clearTimeout(offerT);
+    if (!n || !mine || !(mine.t > (n.t || 0))) return;
+    offerT = setTimeout(() => {
+      const others = Object.values(NETg.keep.getAll()).some(o => o && o.t >= mine.t && o.at >= n.at);
+      if (!others) NETg.keep.set({ t: mine.t, box: mine.box, at: n.at }).catch(() => {});
+    }, 300 + Math.random() * 2500);
+  };
+  NETg.need.onChange(offer); offer(NETg.need.get());
   if (NETg.show.get()) lastShow = NETg.show.get();
   if (me.name && me.picks.length) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, t: Date.now() }).catch(() => {});
   render();

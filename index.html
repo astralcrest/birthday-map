@@ -47,6 +47,15 @@
       <button data-mode="twin"><b>8</b>taste twin</button>
       <button data-mode="odd"><b>9</b>odd one out</button>
       <button data-mode="bday"><b>0</b>the birthday round</button>
+      <button id="more-btn" aria-expanded="false" aria-controls="more">more games</button>
+    </div>
+    <div id="more" class="hide">
+      <button data-mode="nth">name that hop</button>
+      <button data-mode="match">matchmaker</button>
+      <button data-mode="guilty">guilty pleasure</button>
+      <button data-mode="bridge">bridge builder</button>
+      <button data-mode="teams">team split</button>
+      <button data-mode="decade">decade roulette</button>
     </div>
   </nav>
 
@@ -74,6 +83,7 @@
   <aside id="board" class="panel" aria-label="points">
     <h3>points</h3>
     <ol id="board-ol"></ol>
+    <button class="pill small hide" id="team-merge" type="button">merge teams</button>
   </aside>
 
   <section id="p-pairs" class="panel">
@@ -101,6 +111,7 @@
     <ul id="join-list" class="people"></ul>
     <div class="row">
       <button class="pill small" id="join-add">add someone by hand</button>
+      <button class="pill small" id="join-bulk">paste a list</button>
       <button class="pill small" id="join-save">save room file</button>
       <label class="pill small file">open room file<input type="file" id="join-open" accept=".json,application/json"></label>
       <button class="pill small" id="join-clear">clear room</button>
@@ -134,8 +145,9 @@
   <section id="g-form" class="g-sec">
     <h1>put yourself on the map</h1>
     <label class="field"><span>your name</span><input id="g-name" type="text" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="first name is plenty"></label>
-    <p class="field-h">up to three picks: an artist, a song, or a link</p>
+    <p class="field-h">three picks. one is enough. a song, an artist or a link.</p>
     <div id="g-picks" class="picker"></div>
+    <div id="g-gp" class="picker gp"></div>
     <button class="pill solid wide" id="g-send" disabled>put me on the map</button>
     <p class="note" id="g-msg"></p>
   </section>
@@ -144,6 +156,13 @@
     <h1 id="g-hi"></h1>
     <ul id="g-mine" class="mine"></ul>
     <p class="note" id="g-status"></p>
+    <p class="g-team" id="g-team"></p>
+    <div id="g-ask" class="hide">
+      <h2 id="g-ask-q"></h2>
+      <div id="g-ask-pick" class="picker"></div>
+      <button class="pill solid wide" id="g-ask-send" disabled>send</button>
+      <p class="note" id="g-ask-msg"></p>
+    </div>
     <div id="g-vote" class="hide">
       <h2 id="g-q"></h2>
       <div id="g-opts" class="opts"></div>
@@ -160,9 +179,28 @@
     <h2>add someone by hand</h2>
     <label class="field"><span>name</span><input id="h-name" type="text" maxlength="24" autocomplete="off" placeholder="name"></label>
     <div id="h-picks" class="picker"></div>
+    <div id="h-gp" class="picker gp"></div>
     <div class="row">
       <button class="pill solid" id="h-ok" disabled>add</button>
       <button class="pill" id="h-cancel">cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="bulk" class="hide" role="dialog" aria-modal="true" aria-label="paste a list">
+  <div class="hand-in bulk-in">
+    <h2>paste a list</h2>
+    <p class="note">one person per line or csv row. name first, then up to three songs or artists. emails and phone numbers are ignored.</p>
+    <textarea id="b-text" rows="5" spellcheck="false" aria-label="list" placeholder="maya, pink + white - frank ocean, radiohead, sza"></textarea>
+    <div class="row">
+      <button class="pill solid small" id="b-read" type="button">read it</button>
+      <label class="pill small file">upload a csv<input type="file" id="b-file" accept=".csv,.tsv,.txt,text/csv,text/plain"></label>
+    </div>
+    <p class="note" id="b-msg"></p>
+    <ul id="b-list" class="bulk"></ul>
+    <div class="row">
+      <button class="pill solid" id="b-add" type="button" disabled>add all</button>
+      <button class="pill" id="b-close" type="button">close</button>
     </div>
   </div>
 </div>

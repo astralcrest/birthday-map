@@ -54,9 +54,18 @@ async function unseal(key, box) {
 function cleanPick(p) {
   if (!p || !p.aid) return null;
   const o = { k: p.k === 't' ? 't' : 'a', aid: +p.aid, an: String(p.an || '').slice(0, 80) };
+  if (p.s === 0 || p.s === 1 || p.s === 2) o.s = p.s;
   if (p.tid) { o.tid = +p.tid; o.tt = String(p.tt || '').slice(0, 100); }
   return o;
 }
+// three named slots; every one is optional and takes a song, an artist or a link
+const SLOTS = [
+  { l: 'your forever song', h: "the one you'd keep if you could only keep one", n: 'forever song' },
+  { l: 'your song at 16', h: 'whatever you had on repeat then', n: 'song at 16' },
+  { l: 'your right-now artist', h: "who you've played most lately", n: 'right-now artist' },
+];
+const GP = { l: 'your guilty pleasure', h: 'stays secret until the game', n: 'guilty pleasure' };
+const slotName = p => p && p.s !== undefined ? SLOTS[p.s].n : '';
 const pickLabel = p => p.k === 't' ? `${p.tt} · ${p.an}` : p.an;
 
 // ---------- gate ----------
@@ -89,7 +98,7 @@ async function gate() {
 }
 
 // ---------- picker: up to three picks, each from a search or a pasted link ----------
-function picker(root, { max = 3, onChange = () => {} } = {}) {
+function picker(root, { max = 3, onChange = () => {}, labels = null } = {}) {
   const picks = new Array(max).fill(null);
   let timers = [];
   function render() {
@@ -97,13 +106,14 @@ function picker(root, { max = 3, onChange = () => {} } = {}) {
     let shownEmpty = false;
     picks.forEach((p, i) => {
       const slot = el('div', { class: 'slot' });
+      if (labels) slot.append(el('span', { class: 'slot-l' }, labels[i].l));
       if (p) {
         slot.append(el('div', { class: 'chip' },
           el('div', { class: 'lab' }, el('b', {}, p.k === 't' ? p.tt : p.an), el('span', {}, p.k === 't' ? `song · ${p.an}` : 'artist')),
           el('button', { type: 'button', 'aria-label': 'remove', onclick: () => { picks[i] = null; render(); onChange(); } }, '×')));
-      } else if (!shownEmpty) {
+      } else if (labels || !shownEmpty) {
         shownEmpty = true;
-        const inp = el('input', { type: 'text', placeholder: i === 0 ? 'an artist, a song, or a link' : 'another one (optional)', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': `pick ${i + 1}` });
+        const inp = el('input', { type: 'text', placeholder: labels ? labels[i].h : i === 0 ? 'an artist, a song, or a link' : 'another one (optional)', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': `pick ${i + 1}` });
         const res = el('ul', { class: 'res' });
         const run = async () => {
           const q = inp.value.trim();
@@ -122,7 +132,7 @@ function picker(root, { max = 3, onChange = () => {} } = {}) {
           if (note) res.append(el('li', {}, el('p', { class: 'msg' }, note)));
           if (!list.length && !note) res.append(el('li', {}, el('p', { class: 'msg' }, 'nothing found. try fewer words.')));
           for (const r of list) {
-            res.append(el('li', {}, el('button', { type: 'button', onclick: () => { picks[i] = cleanPick(r); render(); onChange(); const n = root.querySelector('input'); if (n) n.focus(); } },
+            res.append(el('li', {}, el('button', { type: 'button', onclick: () => { picks[i] = cleanPick(r); if (labels) picks[i].s = i; render(); onChange(); const n = root.querySelector('input'); if (n) n.focus(); } },
               el('span', { class: 'kd' }, r.k === 't' ? 'song' : 'artist'),
               el('span', { class: 'tx' }, el('b', {}, r.k === 't' ? r.tt : r.an), r.k === 't' ? el('span', {}, r.an) : null))));
           }
@@ -137,14 +147,25 @@ function picker(root, { max = 3, onChange = () => {} } = {}) {
   render();
   return {
     get: () => picks.filter(Boolean),
-    set: arr => { picks.fill(null); (arr || []).slice(0, max).forEach((p, i) => { picks[i] = cleanPick(p); }); render(); onChange(); },
+    set: arr => {
+      picks.fill(null);
+      for (const q of arr || []) {
+        const c = cleanPick(q);
+        if (!c) continue;
+        const i = labels && c.s !== undefined && !picks[c.s] && c.s < max ? c.s : picks.findIndex(x => !x);
+        if (i < 0) break;
+        if (labels) c.s = i;
+        picks[i] = c;
+      }
+      render(); onChange();
+    },
   };
 }
 
 // =====================================================================
 // HOST
 // =====================================================================
-const H = { guests: new Map(), scores: {}, hostKey: null, played: [], online: new Set(), pwQr: false, gv: 0, peer: new Map() };
+const H = { guests: new Map(), scores: {}, hostKey: null, played: [], online: new Set(), pwQr: false, gv: 0, peer: new Map(), teams: null };
 // a phone keeps one id across reloads; the network id changes each time
 const who = ctx => H.peer.get(ctx.userId) || ctx.userId;
 const gidOf = (v, uid) => (typeof v.id === 'string' && /^[a-f0-9]{16}$/.test(v.id)) ? 'p' + v.id : uid;
@@ -163,7 +184,7 @@ function saveSoon() {
   clearTimeout(saveT);
   saveT = setTimeout(async () => {
     savedAt = Date.now();
-    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played });
+    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played, teams: H.teams });
     lsSet('party.room.' + K.roomId, JSON.stringify(box));
     pushVault(box);
   }, 700);
@@ -184,6 +205,7 @@ async function adopt(v) {
   for (const k in d.scores || {}) H.scores[k] = Math.max(H.scores[k] || 0, d.scores[k] || 0);
   if (!H.hostKey) H.hostKey = d.hostKey || null;
   if (!H.played.length) H.played = d.played || [];
+  if (!H.teams && d.teams) H.teams = d.teams;
   H.gv++;
   setText('#join-msg', `picked the room back up from a phone. ${guestList().length} people.`);
   saveSoon(); dataChanged(); renderBoard(); publish();
@@ -194,7 +216,7 @@ async function restore() {
   try {
     const d = await unseal(K.key, JSON.parse(raw));
     for (const g of d.guests || []) H.guests.set(g.k, g);
-    H.scores = d.scores || {}; H.hostKey = d.hostKey || null; H.played = d.played || [];
+    H.scores = d.scores || {}; H.hostKey = d.hostKey || null; H.played = d.played || []; H.teams = d.teams || null;
     savedAt = d.t || 1;
   } catch (e) { /* a different password wrote this: ignore */ }
 }
@@ -202,7 +224,7 @@ function upsertGuest(k, v, src) {
   if (!v || !v.n) return;
   const picks = (v.picks || []).map(cleanPick).filter(Boolean).slice(0, 3);
   const prev = H.guests.get(k);
-  H.guests.set(k, { k, n: String(v.n).slice(0, 24).trim() || 'guest', picks, src, t: prev ? prev.t : Date.now() });
+  H.guests.set(k, { k, n: String(v.n).slice(0, 24).trim() || 'guest', picks, gp: cleanPick(v.gp), src, t: prev ? prev.t : Date.now() });
   H.gv++;
   saveSoon(); dataChanged();
 }
@@ -344,12 +366,14 @@ function publish() {
       guests: list.map(g => ({ k: g.k, n: g.n })),
       scores: H.scores,
       round: RD ? { id: RD.id, type: RD.type, open: RD.open, q: RD.q, opts: RD.opts || null, res: RD.res || null } : null,
+      ask: RD && RD.open && RD.ask ? RD.ask : null,
+      teams: H.teams ? { n: H.teams.n, m: teamMap(), tot: teamTotals() } : null,
     };
     NET.show.set(s).catch(() => {});
   }, 120);
 }
 function openRound(type, q, opts, truth) {
-  RD = { id: rid(), type, q, opts, open: true, votes: new Map(), res: null, t0: performance.now(), truth };
+  RD = { id: rid(), type, q, opts, open: true, votes: new Map(), vt: new Map(), res: null, t0: performance.now(), truth };
   publish();
   if (DEMO) fakeVotes(RD);
   renderBoard();
@@ -365,7 +389,7 @@ function addPoints(keys, n = 1) {
 }
 function onVote(v, ctx) {
   if (!RD || !RD.open || !v || v.r !== RD.id) return;
-  RD.votes.set(who(ctx), v.v);
+  RD.votes.set(who(ctx), v.v); RD.vt.set(who(ctx), performance.now() - RD.t0);
   setText('#k-hop', roundLine());
 }
 function roundLine() {
@@ -387,7 +411,13 @@ function fakeVotes(rd) {
       else if (rd.type === 'twin') { const tw = twinsOf(i); v = Math.random() < .45 && tw.length ? list[tw[0]].k : pickOne(list.filter(x => x.k !== g.k)).k; }
       else if (rd.type === 'steer') v = Math.random() < .55 && t.best ? t.best : pickOne(rd.opts).v;
       else if (rd.type === 'odd') v = Math.random() < .5 ? t.odd : Math.floor(Math.random() * 3);
-      rd.votes.set(g.k, v);
+      else if (rd.type === 'nth') v = Math.random() < .6 ? t.ans : pickOne(['a', 'b']);
+      else if (rd.type === 'match') v = Math.random() < .45 ? t.ans : pickOne(rd.opts).v;
+      else if (rd.type === 'far') v = Math.random() < .4 && t.ans ? pickOne(t.ans) : pickOne(rd.opts).v;
+      else if (rd.type === 'guilty') v = Math.random() < .4 ? t.owner : pickOne(list.filter(x => x.k !== g.k)).k;
+      else if (rd.type === 'bridge') v = Math.random() < .55 ? 'y' : 'n';
+      else if (rd.type === 'decade') v = Math.random() < .35 ? t.decade : pickOne(rd.opts).v;
+      rd.votes.set(g.k, v); rd.vt.set(g.k, performance.now() - rd.t0);
       setText('#k-hop', roundLine());
     }, 1500 + Math.random() * 9000);
   });
@@ -398,7 +428,7 @@ async function hostMain() {
   $('#host').classList.remove('hide');
   setText('#room-tag', DEMO ? 'demo' : 'room ' + K.code);
   player = new Player();
-  window.__party = { player, H, DV, save: saveSoon, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
+  window.__party = { player, H, DV, save: saveSoon, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, get X() { return { NT, MT, BR, DC, TM }; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
   if (DEMO) await loadDemo();
   else {
     await restore();
@@ -409,6 +439,7 @@ async function hostMain() {
   setupNav();
   setupJoin();
   setupHand();
+  setupBulk();
   setupModes();
   $('#sound').classList.remove('hide');
   $('#sound-go').addEventListener('click', async () => {
@@ -449,6 +480,7 @@ async function startNet() {
   NET.guest.onChange((v, ctx) => { if (!ctx.self && v) fromPeer(ctx.userId, v); });
   for (const [k, v] of Object.entries(NET.guest.getAll())) if (k !== NET.self.userId && v) fromPeer(k, v);
   NET.vote.onChange((v, ctx) => { if (!ctx.self) onVote(v, ctx); });
+  NET.reply.onChange((v, ctx) => { if (!ctx.self) onReply(v, ctx); });
   // ask the phones for the newest copy of the room; whoever holds a newer one answers
   NET.keep.onChange((v, ctx) => { if (!ctx.self && v) adopt(v); });
   for (const [k, v] of Object.entries(NET.keep.getAll())) if (k !== NET.self.userId && v) adopt(v);
@@ -467,9 +499,10 @@ async function loadDemo() {
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   people.slice(0, n).forEach(([name, specs], i) => {
-    const picks = specs.map(s => seed && seed.picks[s]).filter(Boolean).map(p => cleanPick({ k: p.k, aid: p.aid, an: p.an, tid: p.tid, tt: p.tt }));
+    const picks = specs.map(s => seed && seed.picks[s]).filter(Boolean).map((p, j) => cleanPick({ k: p.k, aid: p.aid, an: p.an, tid: p.tid, tt: p.tt, s: j }));
     const k = 'demo-' + i;
-    H.guests.set(k, { k, n: name, picks, src: 'demo', t: i });
+    const sk = seed ? Object.keys(seed.picks) : [], gs = i % 3 === 2 || !sk.length ? null : seed.picks[sk[(i * 11 + 5) % sk.length]];
+    H.guests.set(k, { k, n: name, picks, gp: gs ? cleanPick(gs) : null, src: 'demo', t: i });
   });
   H.hostKey = 'demo-0';
   H.gv++;
@@ -543,12 +576,12 @@ function drawCloud(c, t, dt, opts = {}) {
   const list = DV.list, f = DV.facts;
   if (!list.length) return;
   const breathe = (i, a) => [Math.sin(t * .21 + i * 1.7) * a, Math.cos(t * .17 + i * 2.3) * a];
-  const P = list.map((g, i) => { const p = project(R, pos.get(g.k) || [0, 0]); const b = breathe(i, 3); return [p[0] + b[0], p[1] + b[1]]; });
+  const P = list.map((g, i) => { let q = pos.get(g.k) || [0, 0]; if (opts.off) { const o = opts.off(g, q); q = [q[0] + o[0], q[1] + o[1]]; } const p = project(R, q); const b = breathe(i, 3); return [p[0] + b[0], p[1] + b[1]]; });
   // the map: every related artist mapped, as a faint dot
   c.fillStyle = alpha(COL.ice, opts.poster ? .42 : .36);
   c.beginPath();
   const dr = opts.poster ? 2.4 : 1.3;
-  for (const d of DV.dots) {
+  if (!opts.off) for (const d of DV.dots) {
     const p = project(R, d);
     c.moveTo(p[0] + dr, p[1]); c.arc(p[0], p[1], dr, 0, 6.2832);
   }
@@ -556,18 +589,20 @@ function drawCloud(c, t, dt, opts = {}) {
   // links to the two nearest people
   const n = list.length, seen = new Set();
   c.lineWidth = 1;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && !opts.lit; i++) {
     const near = [...Array(n).keys()].filter(j => j !== i).sort((a, b) => DV.D[i][a] - DV.D[i][b]).slice(0, 2);
     for (const j of near) {
       const key = i < j ? i + '-' + j : j + '-' + i;
       if (seen.has(key)) continue; seen.add(key);
       const sim = 1 - DV.D[i][j] / Gr.FAR;
       if (sim <= .05) continue;
+      if (opts.off && opts.tint(list[i]) !== opts.tint(list[j])) continue;
       c.strokeStyle = alpha(COL.ice, .16 + .6 * sim);
       curve(c, P[i], P[j], ((i * 7 + j * 13) % 5 - 2) * .08);
     }
   }
   if (opts.twins) drawTwinLines(c, P);
+  if (opts.line) { c.strokeStyle = COL.mint; c.lineWidth = 2.5; curve(c, P[opts.line[0]], P[opts.line[1]], .1); }
   // people
   const fs = opts.fs || fontPx(24);
   c.font = `500 ${fs}px "Instrument Sans", system-ui, sans-serif`;
@@ -576,25 +611,29 @@ function drawCloud(c, t, dt, opts = {}) {
   list.forEach((g, i) => {
     const [x, y] = P[i];
     const playing = cloudNow && cloudNow.k === g.k;
-    if (i === f.center) {
+    const dim = opts.lit && !opts.lit.has(g.k), tint = opts.tint ? opts.tint(g) : null;
+    c.globalAlpha = dim ? .3 : 1;
+    if (opts.lit && !dim) { c.strokeStyle = COL.mint; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 16 + Math.sin(t * 2) * 1.5, 0, 6.2832); c.stroke(); }
+    if (opts.lit || opts.off) { /* no rings on a focused map */ } else if (i === f.center) {
       c.strokeStyle = COL.mint; c.lineWidth = 1.25;
       for (const r of [15, 25]) { c.beginPath(); c.arc(x, y, r + Math.sin(t * 1.3) * 1.5, 0, 6.2832); c.stroke(); }
     }
-    if (i === f.outlier) { c.strokeStyle = COL.rose; c.lineWidth = 1.25; c.beginPath(); c.arc(x, y, 15, 0, 6.2832); c.stroke(); }
+    if (!opts.lit && !opts.off && i === f.outlier) { c.strokeStyle = COL.rose; c.lineWidth = 1.25; c.beginPath(); c.arc(x, y, 15, 0, 6.2832); c.stroke(); }
     if (playing) {
       const lv = player ? player.level() : 0;
       c.strokeStyle = COL.mint; c.lineWidth = 1.5;
       for (let k = 0; k < 3; k++) { const ph = (t * .6 + k / 3) % 1; c.globalAlpha = 1 - ph; c.beginPath(); c.arc(x, y, 10 + ph * 46 + lv * 20, 0, 6.2832); c.stroke(); }
       c.globalAlpha = 1;
     }
-    c.fillStyle = COL.ink;
-    c.beginPath(); c.arc(x, y, 5, 0, 6.2832); c.fill();
+    c.fillStyle = tint || COL.ink;
+    c.beginPath(); c.arc(x, y, opts.lit && !dim ? 6.5 : 5, 0, 6.2832); c.fill();
     g.picks.forEach((p, k) => {
       const a = t * .25 + k * 2.0944 + i;
       c.beginPath(); c.arc(x + Math.cos(a) * 12, y + Math.sin(a) * 12, 2, 0, 6.2832); c.fill();
     });
     // label: try right, left, above, below
     const label = opts.nameOf ? opts.nameOf(g) : g.n;
+    if (!label) { c.globalAlpha = 1; return; }
     const w = c.measureText(label).width, h = fs;
     const cand = [[x + 20, y, 'left'], [x - 20 - w, y, 'left'], [x - w / 2, y - 24, 'left'], [x - w / 2, y + 26, 'left']];
     let best = cand[0], bo = Infinity;
@@ -607,10 +646,12 @@ function drawCloud(c, t, dt, opts = {}) {
       if (o === 0) break;
     }
     boxes.push([best[0], best[1] - h / 2, w, h]);
-    c.fillStyle = i === f.outlier ? COL.rose : i === f.center ? COL.mint : playing ? COL.mint : COL.ink;
+    c.fillStyle = tint || (opts.lit ? COL.mint : i === f.outlier ? COL.rose : i === f.center ? COL.mint : playing ? COL.mint : COL.ink);
     c.textAlign = 'left';
     c.fillText(label, best[0], best[1]);
+    c.globalAlpha = 1;
   });
+  return P;
 }
 function curve(c, a, b, bow) {
   const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
@@ -994,7 +1035,8 @@ function songReveal() {
   const right = [...RD.votes.entries()].filter(([, v]) => ans.includes(v)).map(([k]) => k);
   addPoints(right);
   const names = ans.map(nameOf);
-  const text = names.length > 1 ? `${andList(names)} all picked this.` : `it was ${names[0]}'s.`;
+  const sl = slotName(item.p);
+  const text = names.length > 1 ? `${andList(names)} all picked this.` : `it was ${names[0]}'s${sl ? ' ' + sl : ''}.`;
   setText('#k-q', '');
   setText('#k-ans', text);
   const pv = RD.pv;
@@ -1244,22 +1286,22 @@ function oddReveal() {
   const w = ['one', 'two', 'three'];
   const s = OD.clips[OD.odd], pair = OD.clips.filter((_, i) => i !== OD.odd);
   setText('#k-q', '');
-  setText('#k-ans', `${w[OD.odd]} was ${s.g.n}'s.`);
+  setText('#k-ans', `${w[OD.odd]} was ${s.g.n}'s${slotName(s.p) ? ' ' + slotName(s.p) : ''}.`);
   setText('#k-track', `the other two were ${pair[0].g.n}'s: ${pair.map(x => x.p.an).join(' and ')}.`);
   setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
   setText('#k-go', 'three more');
   closeRound({ text: `${w[OD.odd]} was the stranger`, right });
 }
 
-// ---------- the birthday round ----------
+// ---------- the birthday round: six degrees to the birthday baby ----------
 const BD = { rows: [], active: false, final: false };
 async function bdayStart() {
   const hostG = H.hostKey && H.guests.get(H.hostKey);
-  if (!hostG || !hostG.picks.length) { setText('#k-q', 'flag the host first: open join (j) and tap “host” next to a name.'); return; }
+  if (!hostG || !hostG.picks.length) { setText('#k-q', 'flag the birthday baby first: open join (j) and tap “birthday baby” next to a name.'); return; }
   const tok = ++WK.tok;
   BD.active = true; BD.final = false; BD.rows = [];
   setText('#k-ans', ''); setText('#k-right', ''); setText('#k-name', ''); setText('#k-track', '');
-  setText('#k-q', 'every path leads to the host.');
+  setText('#k-q', 'every path leads to the birthday baby.');
   setText('#k-go', '');
   const others = DV.list.filter(g => g.k !== hostG.k);
   for (let i = 0; i < others.length; i++) {
@@ -1268,22 +1310,49 @@ async function bdayStart() {
     const res = await pathFor(others[i], hostG, 160).pr;
     BD.rows.push({ g: others[i], path: res.path, hops: res.path ? res.path.length - 1 : null });
   }
+  if (tok !== WK.tok) return;
   BD.rows.sort((a, b) => (a.hops ?? 99) - (b.hops ?? 99));
+  if (BD.rows.length < 3) { bdayWalk(); return; }
+  const eff = r => r.hops ?? 99;
+  const byFar = BD.rows.slice().sort((a, b) => eff(b) - eff(a));
+  const top = eff(byFar[0]);
+  const ans = byFar.filter(r => eff(r) === top).map(r => r.g.k);
+  const opts = shuffle([...byFar.slice(0, 3), ...shuffle(byFar.slice(3)).slice(0, 5)]).map(r => ({ v: r.g.k, l: r.g.n }));
+  setText('#k-q', 'who is farthest from the birthday baby?');
+  setText('#k-go', 'reveal');
+  const rd = openRound('far', 'who is farthest from the birthday baby?', opts, { ans, top });
+  rd.hp = 'guess · ';
+  setText('#k-hop', 'guess · ' + roundLine());
+  M.previewFor(hostG.picks[0]).then(pv => { if (RD === rd && rd.open && pv && player.ready) player.play(pv.url, { at: 0 }); });
+  autoClose(rd, 24000, bdayWalk);
+}
+async function bdayWalk() {
+  const hostG = H.hostKey && H.guests.get(H.hostKey);
+  if (!hostG || !BD.active) return;
+  let note = '';
+  if (RD && RD.type === 'far' && RD.open) {
+    const { ans, top } = RD.truth;
+    const right = [...RD.votes.entries()].filter(([, v]) => ans.includes(v)).map(([k]) => k);
+    addPoints(right, 2);
+    const nm = andList(ans.map(nameOf));
+    const text = top >= 99 ? `${nm} ${ans.length > 1 ? 'are' : 'is'} out of reach.` : `farthest: ${nm}, ${top} hops.`;
+    note = text + (right.length ? ` got it: ${andList(right.map(nameOf))}.` : ' nobody got it.');
+    closeRound({ text, right });
+  }
   renderBdayList();
+  setText('#k-go', ''); setText('#k-q', ''); setText('#k-right', note);
   const walkOrder = BD.rows.filter(r => r.path).slice().reverse();
   for (const r of walkOrder) {
-    if (tok !== WK.tok) return;
-    setText('#k-q', '');
-    setText('#m-sub', `${r.g.n} → the host · ${r.hops} hop${r.hops === 1 ? '' : 's'}`);
-    await walkPath(r.path, { fromPick: pickFor(r.g, r.path[0]), toPick: pickFor(hostG, r.path[r.path.length - 1]), fromLabel: `${r.g.n}'s pick`, toLabel: 'the host', dwell: 5000 });
+    setText('#m-sub', `${r.g.n} → the birthday baby · ${r.hops} hop${r.hops === 1 ? '' : 's'}`);
+    const ok = await walkPath(r.path, { fromPick: pickFor(r.g, r.path[0]), toPick: pickFor(hostG, r.path[r.path.length - 1]), fromLabel: `${r.g.n}'s pick`, toLabel: 'the birthday baby', dwell: 5000 });
+    if (!ok) return;
   }
-  if (tok !== WK.tok) return;
   BD.final = true;
   const reach = BD.rows.filter(r => r.hops != null);
   const far = Math.max(0, ...reach.map(r => r.hops));
   setText('#m-sub', 'everyone, walking home');
   setText('#k-hop', ''); setText('#k-name', ''); setText('#k-track', '');
-  setText('#k-ans', reach.length === BD.rows.length ? `everyone is within ${far} hops of the host.` : `${reach.length} of ${BD.rows.length} are within ${Gr.CAP} hops of the host.`);
+  setText('#k-ans', reach.length === BD.rows.length ? `everyone is within ${far} hops of the birthday baby.` : `${reach.length} of ${BD.rows.length} are within ${Gr.CAP} hops of the birthday baby.`);
   setText('#k-right', 'happy birthday.');
   setText('#k-go', 'again');
   const hp = await M.previewFor(hostG.picks[0]);
@@ -1291,7 +1360,7 @@ async function bdayStart() {
 }
 function renderBdayList() {
   const ol = $('#board-ol');
-  $('#board h3').textContent = 'hops to the host';
+  $('#board h3').textContent = 'hops to the birthday baby';
   ol.textContent = '';
   for (const r of BD.rows.slice(0, 14)) ol.append(el('li', {}, el('span', {}, r.g.n), el('span', {}, r.hops == null ? 'far' : String(r.hops))));
   $('#board').style.display = 'block';
@@ -1328,6 +1397,490 @@ function drawBdayFinal(c, t) {
   for (const r of [16, 28]) { c.beginPath(); c.arc(cx, cy, r + Math.sin(t * 1.4) * 2, 0, 6.2832); c.stroke(); }
 }
 
+// =====================================================================
+// MORE GAMES: name that hop, matchmaker, guilty pleasure, bridge builder, team split, decade roulette
+// =====================================================================
+const NEWM = new Set(['nth', 'match', 'guilty', 'bridge', 'teams', 'decade']);
+const clearTexts = () => ['#k-ans', '#k-right', '#k-name', '#k-track', '#k-q', '#k-hop'].forEach(id => setText(id, ''));
+const eligible = () => DV.list.filter(g => g.src === 'demo' || (g.src === 'p2p' && H.online.has(g.k)));
+const fastPts = (rd, k) => (rd.vt.get(k) ?? 1e9) < rd.ms * .4 ? 2 : 1;
+async function loopClip(pvs, tok, rd, at = 3, every = 6500) {
+  for (let i = 0; tok === WK.tok && RD === rd && rd.open; i++) {
+    const pv = Array.isArray(pvs) ? pvs[i % pvs.length] : pvs;
+    if (pv && player.ready) player.play(pv.url, { at, fadeIn: .4 });
+    await sleep(every);
+  }
+}
+function sideRect(h = .64, x = .4) {
+  if (!wide()) return { x: 14, y: 14, w: W - 28, h: Hh - 28 };
+  const jw = joinW();
+  return { x: (W - jw) * x, y: Hh * .2, w: (W - jw) * (.96 - x), h: Hh * h };
+}
+
+// ---- name that hop ----
+const NT = { reveal: false, A: null, B: null, h: 0 };
+async function nthStart() {
+  if (DV.list.length < 3) { setText('#k-q', 'needs three people on the map.'); return; }
+  const tok = ++WK.tok;
+  NT.reveal = false; WK.stops = []; WK.pts = []; WK.lit = -1; ST.active = false;
+  clearTexts();
+  let found = null;
+  for (let tries = 0; tries < 12 && !found; tries++) {
+    const pr = nextPair();
+    if (!pr) break;
+    setText('#k-hop', 'picking two people and a path');
+    const res = await findPath(pr[0], pr[1], 160);
+    if (tok !== WK.tok) return;
+    const h = res.path ? res.path.length - 1 : 0;
+    if (h < 3) continue;
+    for (const i of shuffle([...Array(h - 1).keys()].map(x => x + 1).filter(i => 2 * i !== h))) {
+      const pv = await M.previewFor({ aid: res.path[i] });
+      if (tok !== WK.tok) return;
+      if (pv) { found = { A: pr[0], B: pr[1], path: res.path, i, pv }; break; }
+    }
+  }
+  if (!found) { setText('#k-hop', ''); setText('#k-q', 'no long enough path yet. try again.'); return; }
+  const { A, B, path, i, pv } = found, h = path.length - 1;
+  Object.assign(NT, { A, B, h });
+  setText('#m-sub', `${A.n} and ${B.n} are ${h} hops apart.`);
+  setText('#k-q', 'this artist sits on the path between them. nearer to whom?');
+  setText('#k-go', 'reveal');
+  const rd = openRound('nth', `listen. nearer ${A.n} or ${B.n}?`, [{ v: 'a', l: `nearer ${A.n}` }, { v: 'b', l: `nearer ${B.n}` }], { ans: i < h - i ? 'a' : 'b', i, h });
+  Object.assign(rd, { pair: [A, B], path, pv, hp: 'nearer · ' });
+  setText('#k-hop', 'nearer · ' + roundLine());
+  autoClose(rd, 22000, nthReveal);
+  loopClip(pv, tok, rd, 4, 6500);
+}
+async function nthReveal() {
+  const rd = RD;
+  if (!rd || rd.type !== 'nth' || !rd.open) return;
+  const [A, B] = rd.pair, { ans, i, h } = rd.truth;
+  const right = [...rd.votes.entries()].filter(([k, v]) => v === ans && k !== A.k && k !== B.k).map(([k]) => k);
+  right.forEach(k => addPoints([k], fastPts(rd, k)));
+  const nm = M.artistName(rd.path[i]) || rd.pv.an;
+  const text = `${nm}: ${i} hop${i === 1 ? '' : 's'} from ${A.n}, ${h - i} from ${B.n}.`;
+  setText('#k-q', ''); setText('#k-ans', `nearer ${ans === 'a' ? A.n : B.n}.`); setText('#k-track', text);
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-go', 'next clip');
+  closeRound({ text, right });
+  NT.reveal = true; WK.lit = i;
+  await walkPath(rd.path, { fromPick: pickFor(A, rd.path[0]), toPick: pickFor(B, rd.path[h]), fromLabel: `${A.n}'s pick`, toLabel: `${B.n}'s pick`, dwell: 3800 });
+}
+function drawNth(c, t) {
+  drawSong(c, t, .7, Hh * .08);
+  if (!NT.A) return;
+  const L = walkLayout(), n = NT.h + 1, pts = trailPoints(L, n, false);
+  c.strokeStyle = alpha(COL.ice, .4); c.lineWidth = 1;
+  c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke();
+  pts.forEach((p, i) => { const end = i === 0 || i === n - 1; c.fillStyle = end ? COL.mint : COL.ink; c.beginPath(); c.arc(p[0], p[1], end ? 6 : 3.5, 0, 6.2832); c.fill(); });
+  c.font = `500 ${fontPx(20)}px "Instrument Sans", sans-serif`; c.fillStyle = COL.ink; c.textBaseline = 'bottom';
+  c.textAlign = 'left'; c.fillText(NT.A.n, pts[0][0], pts[0][1] - 16);
+  c.textAlign = 'right'; c.fillText(NT.B.n, pts[n - 1][0], pts[n - 1][1] - 16);
+}
+
+// ---- matchmaker ----
+const MT = { a: null, b: null, reveal: false };
+async function matchStart() {
+  const L = DV.list;
+  if (L.length < 4) { setText('#k-q', 'needs four people on the map.'); return; }
+  const conn = [];
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) if (DV.D[i][j] < Gr.FAR) conn.push([i, j]);
+  if (!conn.length) { setText('#k-q', 'nobody is within reach of anybody yet.'); return; }
+  const tok = ++WK.tok;
+  const [i, j] = pickOne(conn);
+  const key = (a, b) => L[a].k < L[b].k ? L[a].k + '|' + L[b].k : L[b].k + '|' + L[a].k;
+  const others = [...L.keys()].filter(x => x !== i && x !== j);
+  const seen = new Set([key(i, j)]), pairs = [[i, j]];
+  for (let g = 0; pairs.length < 4 && g < 60; g++) {
+    const a = g % 4 === 0 ? i : g % 4 === 1 ? j : pickOne(others), b = pickOne(others);
+    if (a === b || seen.has(key(a, b))) continue;
+    seen.add(key(a, b)); pairs.push([a, b]);
+  }
+  const opts = shuffle(pairs).map(([a, b]) => ({ v: key(a, b), l: `${L[a].n} + ${L[b].n}` }));
+  const A = L[i], B = L[j], d = DV.D[i][j];
+  Object.assign(MT, { a: A.k, b: B.k, reveal: false, d });
+  clearTexts();
+  setText('#m-sub', 'two dots are lit. everyone else is dimmed.');
+  setText('#k-q', 'who are these two?');
+  setText('#k-track', `similarity ${Gr.score(d)} · ${d.toFixed(1)} hops apart. their picks play.`);
+  setText('#k-go', 'reveal');
+  const rd = openRound('match', 'who are the two lit dots?', opts, { ans: key(i, j) });
+  Object.assign(rd, { hp: 'pair · ', pair: [A, B] });
+  setText('#k-hop', 'pair · ' + roundLine());
+  autoClose(rd, 28000, matchReveal);
+  Promise.all([M.previewFor(A.picks[0]), M.previewFor(B.picks[0])]).then(pvs => loopClip(pvs.filter(Boolean), tok, rd, 3, 9000));
+}
+function matchReveal() {
+  const rd = RD;
+  if (!rd || rd.type !== 'match' || !rd.open) return;
+  const [A, B] = rd.pair;
+  const right = [...rd.votes.entries()].filter(([k, v]) => v === rd.truth.ans && k !== A.k && k !== B.k).map(([k]) => k);
+  addPoints(right);
+  MT.reveal = true;
+  const text = `${A.n} + ${B.n}`;
+  setText('#k-q', ''); setText('#k-ans', text + '.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-go', 'next pair');
+  closeRound({ text, right });
+}
+function drawMatch(c, t, dt) {
+  const ia = DV.idx.get(MT.a), ib = DV.idx.get(MT.b);
+  const P = drawCloud(c, t, dt, { rect: sideRect(), lit: new Set([MT.a, MT.b]), nameOf: g => g.k !== MT.a && g.k !== MT.b ? '' : MT.reveal ? g.n : '?', fs: fontPx(30), line: ia !== undefined && ib !== undefined ? [ia, ib] : null });
+  if (!P || ia === undefined || ib === undefined) return;
+  const d = MT.d !== undefined ? MT.d : DV.D[ia][ib], m = [(P[ia][0] + P[ib][0]) / 2, (P[ia][1] + P[ib][1]) / 2 - 44];
+  c.font = `500 ${fontPx(16)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.mint; c.textAlign = 'center'; c.textBaseline = 'bottom';
+  c.fillText(`${Gr.score(d)} · ${d.toFixed(1)} hops`, m[0], m[1]);
+}
+
+// ---- guilty pleasure ----
+let gpRound = 0;
+async function guiltyStart() {
+  const have = DV.list.filter(g => g.gp);
+  clearTexts();
+  if (have.length < 2) { setText('#k-q', 'needs two guilty pleasures.'); setText('#k-track', `${have.length} in. phones add one under “change my picks”, or add by hand.`); return; }
+  const tok = ++WK.tok;
+  let pool = have.filter(g => !H.played.includes('g:' + g.k));
+  if (!pool.length) { H.played = H.played.filter(x => x[0] !== 'g'); pool = have; }
+  let item = null, pv = null;
+  for (const g of shuffle(pool)) { pv = await M.previewFor(g.gp); if (tok !== WK.tok) return; if (pv) { item = g; break; } }
+  if (!item) { setText('#k-q', 'no secret has a clip right now. try again.'); return; }
+  H.played.push('g:' + item.k);
+  gpRound++;
+  setText('#k-q', 'whose guilty pleasure is this?');
+  setText('#k-track', `${have.length} secrets in. one of you hid this.`);
+  setText('#k-go', 'reveal');
+  const rd = openRound('guilty', 'whose guilty pleasure is this?', null, { owner: item.k });
+  Object.assign(rd, { pv, item, hp: `secret ${gpRound} · ` });
+  setText('#k-hop', rd.hp + roundLine());
+  autoClose(rd, 28000, guiltyReveal);
+  loopClip(pv, tok, rd, 8, 12000);
+}
+function guiltyReveal() {
+  const rd = RD;
+  if (!rd || rd.type !== 'guilty' || !rd.open) return;
+  const o = rd.truth.owner;
+  const right = [...rd.votes.entries()].filter(([k, v]) => v === o && k !== o).map(([k]) => k);
+  addPoints(right);
+  const text = `it was ${nameOf(o)}'s guilty pleasure.`;
+  setText('#k-q', ''); setText('#k-ans', text);
+  setText('#k-track', `${rd.pv.tt} · ${rd.pv.an}`);
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-hop', `secret ${gpRound}`);
+  setText('#k-go', 'next secret');
+  closeRound({ text, right });
+}
+
+// ---- bridge builder: the rule is a detour of at most two hops ----
+const BR = { A: null, B: null, cur: null, t0: 0 };
+const BR_RULE = 'a bridge adds two hops at most.';
+async function bridgeStart() {
+  const E = eligible();
+  if (E.length < 2 || DV.list.length < 3) { setText('#k-q', 'needs two phones on the map and a third person to vote.'); return; }
+  const pairs = [];
+  for (let a = 0; a < E.length; a++) for (let b = a + 1; b < E.length; b++) { const d = DV.D[DV.idx.get(E[a].k)][DV.idx.get(E[b].k)]; if (d < Gr.FAR) pairs.push([E[a], E[b], d]); }
+  clearTexts();
+  if (!pairs.length) { setText('#k-q', 'the phones on the map are out of reach of each other.'); return; }
+  pairs.sort((x, y) => y[2] - x[2]);
+  const [A, B] = pickOne(pairs.slice(0, 4));
+  const tok = ++WK.tok;
+  Object.assign(BR, { A, B, cur: null });
+  setText('#m-sub', `${A.n} and ${B.n} are far apart on the map.`);
+  setText('#k-q', `${A.n} and ${B.n}: name one artist that connects you.`);
+  setText('#k-track', BR_RULE + ' everyone else votes.');
+  setText('#k-go', 'test the bridges');
+  const rd = openRound('bridge', `will ${A.n} and ${B.n} find a bridge?`, [{ v: 'y', l: 'they will find a bridge' }, { v: 'n', l: 'they will not' }], {});
+  Object.assign(rd, { ask: { k: [A.k, B.k], n: [A.n, B.n] }, replies: new Map(), hp: 'bridge · ', pathP: pathFor(A, B, 200).pr });
+  publish();
+  setText('#k-hop', 'bridge · ' + roundLine());
+  autoClose(rd, 55000, bridgeReveal);
+  if (DEMO) fakeReplies(rd);
+  void tok;
+}
+function onReply(v, ctx) { if (v) takeReply(who(ctx), cleanPick(v.pick), v.r); }
+function takeReply(k, p, r) {
+  const rd = RD;
+  if (!rd || !rd.open || rd.type !== 'bridge' || r !== rd.id || !p || !rd.ask.k.includes(k)) return;
+  rd.replies.set(k, p);
+  setText('#k-right', `${rd.replies.size} of 2 named`);
+  if (rd.replies.size === 2 && !rd.soon) { rd.soon = true; setTimeout(() => { if (RD === rd && rd.open) bridgeReveal(); }, 8000); }
+}
+function fakeReplies(rd) {
+  [BR.A, BR.B].forEach((g, i) => setTimeout(() => {
+    if (RD !== rd || !rd.open) return;
+    const path = Gr.pathKnown(BR.A.picks.map(p => p.aid), BR.B.picks.map(p => p.aid));
+    const mid = path && path.length > 2 && Math.random() < .65 ? path[1 + Math.floor(Math.random() * (path.length - 2))] : null;
+    const aid = mid || +pickOne(Object.keys(M.mem.art));
+    takeReply(g.k, { k: 'a', aid, an: M.artistName(aid) }, rd.id);
+  }, 3000 + i * 3500));
+}
+async function bridgeTest(A, B, p, short) {
+  const x = +p.aid, aA = A.picks.map(q => +q.aid), aB = B.picks.map(q => +q.aid);
+  if (short == null) return { p, ok: false, why: 'they have no path.' };
+  if (aA.includes(x) || aB.includes(x)) return { p, ok: false, why: 'that is already one of their picks.' };
+  await M.related(x, 'hi');
+  const [ra, rb] = await Promise.all([Gr.pathLive([x], aA, { budget: 80 }), Gr.pathLive([x], aB, { budget: 80 })]);
+  if (!ra.path || !rb.path) return { p, ok: false, why: 'out of reach.', dA: ra.path ? ra.path.length - 1 : null, dB: rb.path ? rb.path.length - 1 : null };
+  const dA = ra.path.length - 1, dB = rb.path.length - 1;
+  return { p, ok: dA + dB <= short + 2, dA, dB, short, path: ra.path.slice().reverse().concat(rb.path.slice(1)), xi: dA };
+}
+async function bridgeReveal() {
+  const rd = RD;
+  if (!rd || rd.type !== 'bridge' || !rd.open) return;
+  rd.open = false; publish();
+  const { A, B } = BR;
+  setText('#k-go', ''); setText('#k-q', ''); setText('#k-right', '');
+  setText('#k-track', 'testing. ' + BR_RULE);
+  const sr = await rd.pathP;
+  if (RD !== rd) return;
+  const short = sr.path ? sr.path.length - 1 : null;
+  const results = [];
+  for (const [k, p] of rd.replies) {
+    const by = k === A.k ? A : B, nm = M.artistName(p.aid) || p.an;
+    setText('#k-hop', `${by.n} named ${nm}`); setText('#k-ans', ''); setText('#k-track', 'testing. ' + BR_RULE);
+    const r = await bridgeTest(A, B, p, short);
+    if (RD !== rd) return;
+    r.by = by; r.nm = nm; results.push(r);
+    BR.cur = r; BR.t0 = performance.now();
+    setText('#k-ans', r.ok ? 'a bridge.' : 'not a bridge.');
+    setText('#k-track', r.why ? `${nm}: ${r.why}` : `${nm} is ${r.dA} from ${A.n}'s picks and ${r.dB} from ${B.n}'s. shortest is ${short}.`);
+    await sleep(5200);
+    if (RD !== rd) return;
+  }
+  for (const k of rd.ask.k) if (!rd.replies.has(k)) { setText('#k-track', `${nameOf(k)} did not name one.`); }
+  const any = results.some(r => r.ok);
+  const voters = [...rd.votes.entries()].filter(([k]) => !rd.ask.k.includes(k));
+  const right = voters.filter(([, v]) => v === (any ? 'y' : 'n')).map(([k]) => k);
+  addPoints(right);
+  if (any) { addPoints([A.k, B.k], 2); right.push(A.k, B.k); }
+  const text = any ? `${andList(results.filter(r => r.ok).map(r => r.nm))} bridges ${A.n} and ${B.n}.` : `no bridge between ${A.n} and ${B.n}.`;
+  setText('#k-hop', ''); setText('#k-ans', any ? 'bridge found.' : 'no bridge.');
+  setText('#k-right', right.length ? `points: ${andList(right.map(nameOf))}` : 'no points.');
+  setText('#k-go', 'again');
+  closeRound({ text, right });
+}
+function drawBridge(c, t, dt) {
+  const { A, B } = BR;
+  if (!A) { drawCloud(c, t, dt, { rect: sideRect() }); return; }
+  const P = drawCloud(c, t, dt, { rect: sideRect(), lit: new Set([A.k, B.k]), fs: fontPx(30) });
+  const ia = DV.idx.get(A.k), ib = DV.idx.get(B.k);
+  if (!P || ia === undefined || ib === undefined) return;
+  const pa = P[ia], pb = P[ib], len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1;
+  const nx = -(pb[1] - pa[1]) / len, ny = (pb[0] - pa[0]) / len, R = BR.cur;
+  c.font = `500 ${fontPx(18)}px "IBM Plex Mono", monospace`; c.textAlign = 'center';
+  if (!R) {
+    c.strokeStyle = alpha(COL.ice, .6); c.lineWidth = 1.5; c.setLineDash([3, 8]);
+    c.beginPath(); c.moveTo(pa[0], pa[1]); c.lineTo(pb[0], pb[1]); c.stroke(); c.setLineDash([]);
+    c.fillStyle = COL.ice; c.textBaseline = 'middle'; c.fillText('?', (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2);
+    return;
+  }
+  const col = R.ok ? COL.mint : COL.rose;
+  const u = ease(clamp((performance.now() - BR.t0) / 1400, 0, 1));
+  if (!R.path) {
+    const m = [(pa[0] + pb[0]) / 2 + nx * len * .25, (pa[1] + pb[1]) / 2 + ny * len * .25];
+    c.strokeStyle = alpha(COL.rose, .7); c.lineWidth = 1.5; c.setLineDash([6, 6]);
+    c.beginPath(); c.moveTo(pa[0], pa[1]); c.lineTo(m[0], m[1]); c.lineTo(pb[0], pb[1]); c.stroke(); c.setLineDash([]);
+    c.fillStyle = COL.rose; c.beginPath(); c.arc(m[0], m[1], 7 * u, 0, 6.2832); c.fill();
+    c.font = `600 ${fontPx(26)}px "Instrument Sans", sans-serif`; c.textBaseline = 'bottom'; c.fillText(R.nm, m[0], m[1] - 16);
+    return;
+  }
+  const n = R.path.length, shown = u * (n - 1);
+  const pt = f => [pa[0] + (pb[0] - pa[0]) * f + nx * Math.sin(f * Math.PI) * len * .24, pa[1] + (pb[1] - pa[1]) * f + ny * Math.sin(f * Math.PI) * len * .24];
+  c.strokeStyle = col; c.lineWidth = 2.5; c.setLineDash(R.ok ? [] : [8, 6]);
+  c.beginPath();
+  for (let s = 0; s <= 80; s++) { const f = s / 80 * u; const q = pt(f); s ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }
+  c.stroke(); c.setLineDash([]);
+  for (let i = 0; i < n; i++) {
+    if (i > shown + .01) break;
+    const q = pt(i / (n - 1));
+    if (i === R.xi) {
+      c.fillStyle = col; c.beginPath(); c.arc(q[0], q[1], 9, 0, 6.2832); c.fill();
+      c.strokeStyle = col; c.lineWidth = 1.5; c.beginPath(); c.arc(q[0], q[1], 17 + Math.sin(t * 2) * 1.5, 0, 6.2832); c.stroke();
+      c.font = `600 ${fontPx(28)}px "Instrument Sans", sans-serif`; c.textBaseline = 'bottom'; c.fillStyle = col; c.fillText(R.nm, q[0], q[1] - 28);
+    } else if (i > 0 && i < n - 1) { c.fillStyle = COL.ice; c.beginPath(); c.arc(q[0], q[1], 3, 0, 6.2832); c.fill(); }
+  }
+}
+
+// ---- team split ----
+const TM = { t0: 0 };
+function teamOfKey(k) {
+  const T = H.teams;
+  if (T.m[k] !== undefined) return T.m[k];
+  const i = DV.idx.get(k), av = [[], []];
+  if (i !== undefined) for (const [kk, t] of Object.entries(T.m)) { const j = DV.idx.get(kk); if (j !== undefined) av[t].push(DV.D[i][j]); }
+  const m = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 99;
+  return (T.m[k] = m(av[1]) < m(av[0]) ? 1 : 0);
+}
+function teamMap() { for (const g of DV.list) teamOfKey(g.k); return H.teams.m; }
+function teamTotals() {
+  const t = [0, 0];
+  for (const [k, v] of Object.entries(H.scores)) if (H.guests.has(k)) t[teamOfKey(k)] += v;
+  return t;
+}
+function teamsSplit() {
+  const L = DV.list, n = L.length, D = DV.D, xy = DV.xy;
+  if (n < 4) { setText('#k-q', 'needs four people on the map.'); return; }
+  const dd = (i, j) => D[i][j] + .001 * Math.hypot(xy[i][0] - xy[j][0], xy[i][1] - xy[j][1]);
+  let [m0, m1] = DV.facts.farthest, side = [];
+  for (let it = 0; it < 14; it++) {
+    side = L.map((_, i) => i === m0 ? 0 : i === m1 ? 1 : dd(i, m0) <= dd(i, m1) ? 0 : 1);
+    const nm = [0, 1].map(t => {
+      const mem = side.map((s, i) => s === t ? i : -1).filter(i => i >= 0);
+      let best = mem[0], bs = Infinity;
+      for (const i of mem) { const sc = mem.reduce((a, j) => a + dd(i, j), 0); if (sc < bs) { bs = sc; best = i; } }
+      return best;
+    });
+    if (nm[0] === m0 && nm[1] === m1) break;
+    [m0, m1] = nm;
+  }
+  const need = Math.max(2, Math.floor(n * .3));
+  for (const t of [0, 1]) while (side.filter(s => s === t).length < need) {
+    const mo = t ? m1 : m0, ot = t ? m0 : m1;
+    let best = -1, bv = Infinity;
+    side.forEach((s, i) => { if (s !== t && i !== ot) { const v = dd(i, mo) - dd(i, ot); if (v < bv) { bv = v; best = i; } } });
+    if (best < 0) break;
+    side[best] = t;
+  }
+  const cov = [new Map(), new Map()], sz = [0, 0];
+  L.forEach((g, i) => { sz[side[i]]++; for (const v of Gr.bfs(g.picks.map(p => p.aid), 1).dist.keys()) cov[side[i]].set(v, (cov[side[i]].get(v) || 0) + 1); });
+  const nameFor = t => {
+    let best = null, bs = 0;
+    for (const [v, c] of cov[t]) {
+      if (c < 2 || !M.artistName(v)) continue;
+      const sc = c / sz[t] - (cov[1 - t].get(v) || 0) / sz[1 - t] + M.artistFans(v) / 1e12;
+      if (sc > bs) { bs = sc; best = v; }
+    }
+    return 'team ' + (best != null ? M.artistName(best) : L[t ? m1 : m0].n).toLowerCase();
+  };
+  const names = [nameFor(0), nameFor(1)];
+  if (names[0] === names[1]) names[1] = 'team ' + L[m1].n.toLowerCase();
+  H.teams = { n: names, m: Object.fromEntries(L.map((g, i) => [g.k, side[i]])), at: Date.now() };
+  TM.t0 = performance.now();
+  saveSoon(); publish(); renderBoard(); teamsTexts();
+}
+function mergeTeams() {
+  H.teams = null; TM.t0 = 0;
+  saveSoon(); publish(); renderBoard();
+  if (mode === 'teams') { clearTexts(); teamsTexts(); }
+}
+function teamsTexts() {
+  const T = H.teams;
+  setText('#k-go', T ? 'merge' : 'split the room');
+  if (!T) return;
+  const cnt = [0, 0], tot = teamTotals();
+  DV.list.forEach(g => cnt[teamOfKey(g.k)]++);
+  setText('#k-hop', 'two taste camps');
+  setText('#k-q', `${T.n[0]} vs ${T.n[1]}`);
+  setText('#k-track', `${cnt[0]} and ${cnt[1]} people. points ${tot[0]} to ${tot[1]}.`);
+}
+function drawTeams(c, t, dt) {
+  const T = H.teams, R = sideRect(.66, .36);
+  if (!T) { drawCloud(c, t, dt, { rect: R }); return; }
+  const s = ease(clamp((performance.now() - TM.t0) / 1800, 0, 1));
+  const cen = [[0, 0, 0], [0, 0, 0]];
+  for (const g of DV.list) { const p = pos.get(g.k) || [0, 0], q = cen[teamOfKey(g.k)]; q[0] += p[0]; q[1] += p[1]; q[2]++; }
+  for (const q of cen) { q[0] /= q[2] || 1; q[1] /= q[2] || 1; }
+  let dx = cen[1][0] - cen[0][0], dy = cen[1][1] - cen[0][1];
+  const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  const P = drawCloud(c, t, dt, {
+    rect: R, fs: fontPx(22),
+    off: (g, q) => { const tt = teamOfKey(g.k), sg = tt ? 1 : -1, ce = cen[tt]; return [(ce[0] - q[0]) * .35 * s + dx * sg * .4 * s, (ce[1] - q[1]) * .35 * s + dy * sg * .4 * s]; },
+    tint: g => teamOfKey(g.k) ? COL.rose : COL.mint,
+  });
+  if (!P) return;
+  const tot = teamTotals();
+  c.font = `600 ${fontPx(30)}px "Instrument Sans", sans-serif`; c.textBaseline = 'bottom';
+  [0, 1].forEach(tt => {
+    const mem = P.filter((_, i) => teamOfKey(DV.list[i].k) === tt);
+    if (!mem.length) return;
+    const x = mem.reduce((a, p) => a + p[0], 0) / mem.length, y = Math.min(...mem.map(p => p[1])) - 44;
+    c.fillStyle = tt ? COL.rose : COL.mint; c.globalAlpha = s; c.textAlign = 'center';
+    c.fillText(`${T.n[tt]} · ${tot[tt]}`, clamp(x, 120, W - 120), Math.max(fontPx(34), y));
+    c.globalAlpha = 1;
+  });
+}
+
+// ---- decade roulette ----
+const DC = { reveal: false, year: 0, lit: null };
+const decOf = y => y < 1970 ? 1960 : Math.min(2020, Math.floor(y / 10) * 10);
+const DECS = [1960, 1970, 1980, 1990, 2000, 2010, 2020];
+let yearWarm = null;
+function warmYears() {
+  if (yearWarm) return yearWarm;
+  yearWarm = (async () => { for (const g of DV.list) for (const p of g.picks) { try { await M.yearOf(p); } catch (e) { /* skip */ } } yearWarm = null; })();
+  return yearWarm;
+}
+const avgYear = g => { const ys = g.picks.map(p => M.mem.yr[p.tid ? 't' + p.tid : 'a' + p.aid]).filter(y => y > 0); return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : null; };
+async function decadeStart() {
+  const L = DV.list;
+  if (L.length < 2) { setText('#k-q', 'needs two people on the map.'); return; }
+  const tok = ++WK.tok;
+  DC.reveal = false; DC.lit = null; DC.year = 0;
+  clearTexts();
+  setText('#k-hop', 'looking for a song with a date');
+  warmYears();
+  let found = null;
+  for (const it of shuffle(L.flatMap(g => g.picks.flatMap(p => p.s === 1 ? [{ g, p }, { g, p }] : [{ g, p }]))).slice(0, 10)) {
+    const [y, pv] = await Promise.all([M.yearOf(it.p), M.previewFor(it.p)]);
+    if (tok !== WK.tok) return;
+    if (y && pv) { found = { it, y, pv }; break; }
+  }
+  if (!found) { setText('#k-hop', ''); setText('#k-q', 'could not find a dated song. try again.'); return; }
+  setText('#k-hop', '');
+  setText('#k-q', 'which decade is this song from?');
+  setText('#k-go', 'reveal');
+  const opts = DECS.map(v => ({ v, l: v === 1960 ? '60s or earlier' : String(v).slice(2) + 's' }));
+  const rd = openRound('decade', 'which decade is this song from?', opts, { decade: decOf(found.y), year: found.y });
+  Object.assign(rd, { pv: found.pv, it: found.it, hp: 'decade · ' });
+  setText('#k-hop', 'decade · ' + roundLine());
+  autoClose(rd, 24000, decadeReveal);
+  loopClip(found.pv, tok, rd, 6, 10000);
+}
+async function decadeReveal() {
+  const rd = RD;
+  if (!rd || rd.type !== 'decade' || !rd.open) return;
+  const { decade, year } = rd.truth;
+  const right = [...rd.votes.entries()].filter(([, v]) => v === decade).map(([k]) => k);
+  addPoints(right);
+  DC.year = year; DC.reveal = true; DC.lit = new Set();
+  const lab = decade === 1960 ? '60s or earlier' : String(decade).slice(2) + 's';
+  const text = `${year}. the ${lab}.`;
+  setText('#k-hop', ''); setText('#k-q', ''); setText('#k-ans', text);
+  setText('#k-track', `${rd.pv.tt} · ${rd.pv.an}`);
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-go', 'spin again');
+  closeRound({ text, right });
+  await Promise.race([warmYears(), sleep(8000)]);
+  if (RD !== rd) return;
+  const near = DV.list.map(g => [g, avgYear(g)]).filter(x => x[1] != null).sort((a, b) => Math.abs(a[1] - year) - Math.abs(b[1] - year)).slice(0, 3);
+  DC.lit = new Set(near.map(x => x[0].k));
+  if (near.length) setText('#k-right', `${right.length ? `got it: ${andList(right.map(nameOf))}. ` : 'nobody got it. '}picks closest in years: ${andList(near.map(([g, a]) => `${g.n} (${Math.round(a)})`))}`);
+}
+function drawDecade(c, t, dt) {
+  if (DC.reveal) {
+    drawCloud(c, t, dt, { rect: sideRect(.58, .36), lit: DC.lit || new Set(), nameOf: g => DC.lit && DC.lit.has(g.k) ? g.n : '', fs: fontPx(30) });
+  } else drawSong(c, t, .7, Hh * .08);
+  const jw = joinW(), p = pad(), x0 = p + 30, x1 = W - jw - p - 30, y = Hh * (wide() ? .87 : .93), w = (x1 - x0) / 7;
+  c.strokeStyle = alpha(COL.ice, .4); c.lineWidth = 1;
+  c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+  c.font = `500 ${fontPx(16)}px "IBM Plex Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'top';
+  const tally = new Array(7).fill(0);
+  if (!DC.reveal && RD && RD.type === 'decade') for (const v of RD.votes.values()) { const i = (v - 1960) / 10; if (i >= 0 && i < 7) tally[i]++; }
+  DECS.forEach((d, i) => {
+    const cx = x0 + (i + .5) * w;
+    c.strokeStyle = alpha(COL.ice, .4); c.beginPath(); c.moveTo(x0 + i * w, y - 5); c.lineTo(x0 + i * w, y + 5); c.stroke();
+    c.fillStyle = DC.reveal && decOf(DC.year) === d ? COL.mint : COL.dim;
+    c.fillText(d === 1960 ? 'pre-70' : String(d).slice(2) + 's', cx, y + 10);
+    c.fillStyle = COL.ink;
+    for (let k = 0; k < tally[i]; k++) { c.beginPath(); c.arc(cx - 6 + (k % 2) * 12, y - 16 - Math.floor(k / 2) * 12, 4, 0, 6.2832); c.fill(); }
+  });
+  c.beginPath(); c.moveTo(x1, y - 5); c.lineTo(x1, y + 5); c.stroke();
+  if (DC.reveal && DC.year) {
+    const fr = DC.year < 1970 ? .5 : (DC.year % 10) / 10, mx = x0 + ((decOf(DC.year) - 1960) / 10 + fr) * w;
+    c.fillStyle = COL.mint; c.beginPath(); c.moveTo(mx, y - 4); c.lineTo(mx - 8, y - 20); c.lineTo(mx + 8, y - 20); c.closePath(); c.fill();
+    c.font = `600 ${fontPx(30)}px "Instrument Sans", sans-serif`; c.textBaseline = 'bottom'; c.fillText(String(DC.year), mx, y - 26);
+  }
+}
+
 // ---------- contour blob (whose song, twin, odd) ----------
 function contours(c, cx, cy, R, t, seed, color, react) {
   const bands = react && player ? player.bands(16) : new Float32Array(16);
@@ -1351,10 +1904,10 @@ function playCenter() {
   if (wide()) return { cx: (W - jw) * .64, cy: Hh * .52, R: clamp(Math.min(Hh * .28, (W - jw) * .2), 120, 320) };
   return { cx: W / 2, cy: Hh / 2, R: Math.min(W, Hh) * .34 };
 }
-function drawSong(c, t) {
-  const { cx, cy, R } = playCenter();
+function drawSong(c, t, k = 1, up = 0) {
+  const pc = playCenter(), cx = pc.cx, cy = pc.cy - up, R = pc.R * k;
   contours(c, cx, cy, R, t, 1, RD && !RD.open ? COL.mint : COL.ice, true);
-  if (RD && RD.type === 'who') {
+  if (RD) {
     const n = RD.votes.size;
     c.fillStyle = COL.mint;
     for (let i = 0; i < n; i++) { const a = i / Math.max(n, 12) * 6.2832 - Math.PI / 2; c.beginPath(); c.arc(cx + Math.cos(a) * (R * 1.32), cy + Math.sin(a) * (R * 1.32), 4, 0, 6.2832); c.fill(); }
@@ -1536,8 +2089,9 @@ function drawList(c, t, dt) {
 const DRAW = {
   cloud: (c, t, dt) => drawCloud(c, t, dt),
   walk: drawWalk, hops: drawWalk, steer: drawWalk,
-  bday: (c, t, dt) => BD.final ? drawBdayFinal(c, t) : drawWalk(c, t, dt),
-  song: drawSong, odd: drawOdd,
+  bday: (c, t, dt) => BD.final ? drawBdayFinal(c, t) : RD && RD.type === 'far' && RD.open ? drawSong(c, t) : drawWalk(c, t, dt),
+  song: (c, t) => drawSong(c, t), odd: drawOdd,
+  nth: (c, t, dt) => NT.reveal ? drawWalk(c, t, dt) : drawNth(c, t), match: drawMatch, guilty: (c, t) => drawSong(c, t), bridge: drawBridge, teams: drawTeams, decade: drawDecade,
   twin: (c, t, dt) => drawCloud(c, t, dt, { twins: true, rect: twinRect() }),
   pairs: drawPairs, list: drawList,
 };
@@ -1556,14 +2110,26 @@ const MODES = {
   steer: { title: 'steer', sub: 'the room picks each hop. can you find the short way?', go: 'start' },
   twin: { title: 'taste twin', sub: 'guess who sits closest to you on the map.', go: 'open the guesses' },
   odd: { title: 'odd one out', sub: 'three songs. two belong to one person.', go: 'play three' },
-  bday: { title: 'the birthday round', sub: 'every path, walked to the host.', go: 'start the finale' },
+  bday: { title: 'six degrees to the birthday baby', sub: 'guess who is farthest, then watch every path walk home.', go: 'start the finale' },
+  nth: { title: 'name that hop', sub: 'one clip from somewhere on a path. nearer which end?', go: 'start' },
+  match: { title: 'matchmaker', sub: 'two dots are lit. who are they?', go: 'light two dots' },
+  guilty: { title: 'guilty pleasure', sub: 'one secret song. whose is it?', go: 'play a secret' },
+  bridge: { title: 'bridge builder', sub: 'two people name one artist that connects them.', go: 'pick two' },
+  teams: { title: 'team split', sub: 'two taste camps, pulled apart.', go: 'split the room' },
+  decade: { title: 'decade roulette', sub: 'which decade is this song from?', go: 'spin' },
 };
 const GO = { walk: () => { ++walkLoopTok; walkLoop(); }, song: () => RD && RD.type === 'who' && RD.open ? songReveal() : songStart(),
   hops: () => RD && RD.type === 'hops' && RD.open ? hopsWalk() : hopsStart(),
   steer: () => RD && RD.type === 'steer' && RD.open ? steerChoose(null) : (ST.active ? null : steerStart()),
   twin: () => RD && RD.type === 'twin' && RD.open ? twinReveal() : twinStart(),
   odd: () => RD && RD.type === 'odd' && RD.open ? oddReveal() : oddStart(),
-  bday: () => bdayStart(),
+  bday: () => RD && RD.type === 'far' && RD.open ? bdayWalk() : bdayStart(),
+  nth: () => RD && RD.type === 'nth' && RD.open ? nthReveal() : nthStart(),
+  match: () => RD && RD.type === 'match' && RD.open ? matchReveal() : matchStart(),
+  guilty: () => RD && RD.type === 'guilty' && RD.open ? guiltyReveal() : guiltyStart(),
+  bridge: () => RD && RD.type === 'bridge' && RD.open ? bridgeReveal() : bridgeStart(),
+  teams: () => H.teams ? mergeTeams() : teamsSplit(),
+  decade: () => RD && RD.type === 'decade' && RD.open ? decadeReveal() : decadeStart(),
   list: () => tourTok && tourIdx >= 0 ? stopTour() : playTour(0),
   cloud: () => { if (!player.ready) return; if (cloudNow) { cloudTok++; cloudNow = null; player.stop(); setText('#cloud-now', 'paused. space plays.'); } else cloudShuffle(); },
 };
@@ -1574,7 +2140,7 @@ function enterMode(m, keepAudio) {
   $('#host').dataset.mode = m;
   document.querySelectorAll('#modes button[data-mode]').forEach(b => { if (b.dataset.mode !== 'join') b.setAttribute('aria-current', String(b.dataset.mode === m)); });
   if (changed || !keepAudio) {
-    ++WK.tok; ++walkLoopTok; cloudTok++; cloudNow = null; stopTour(); ST.active = false; BD.active = false; BD.final = false; TW.reveal = false; OD.reveal = false; OD.playing = -1;
+    ++WK.tok; ++walkLoopTok; cloudTok++; cloudNow = null; stopTour(); ST.active = false; BD.active = false; BD.final = false; TW.reveal = false; OD.reveal = false; OD.playing = -1; NT.reveal = false; MT.reveal = false; BR.cur = null; BR.A = null; DC.reveal = false; DC.lit = null; WK.lit = -1;
     WK.stops = []; WK.pts = []; WK.opts = null; WK.target = null; WK.searching = false;
     if (RD && RD.open) { RD.open = false; }
     RD = null;
@@ -1590,6 +2156,8 @@ function enterMode(m, keepAudio) {
   renderBoard();
   if (m === 'walk') { fillWalkSelects(); GO.walk(); }
   if (m === 'list') renderList();
+  if (m === 'teams') teamsTexts();
+  $('#more-btn').setAttribute('aria-current', String(NEWM.has(m)));
   if (JUKE.has(m) && player && player.ready) cloudShuffle();
   if (m === 'cloud' && player && !player.ready) setText('#cloud-now', '');
   publish();
@@ -1627,6 +2195,11 @@ function renderBoard() {
   if (mode === 'bday') return;
   const ol = $('#board-ol');
   ol.textContent = '';
+  $('#team-merge').classList.toggle('hide', !H.teams);
+  if (H.teams) {
+    const tot = teamTotals();
+    [0, 1].forEach(t => ol.append(el('li', { class: 'team t' + t }, el('span', {}, H.teams.n[t]), el('span', {}, String(tot[t])))));
+  }
   const rows = Object.entries(H.scores).filter(([k]) => H.guests.has(k)).sort((a, b) => b[1] - a[1]);
   if (!rows.length) { ol.append(el('li', { class: 'more' }, el('span', {}, 'no points yet'))); return; }
   rows.slice(0, 10).forEach(([k, v]) => ol.append(el('li', {}, el('span', {}, nameOf(k)), el('span', {}, String(v)))));
@@ -1655,6 +2228,7 @@ function renderSide() {
 function footStats() {
   const s = Gr.size();
   const pend = M.pending();
+  if (mode === 'teams' && H.teams) teamsTexts();
   setText('#foot-stats', `${DV.list.length} on the map · ${s.nodes.toLocaleString()} artists mapped · ${s.links.toLocaleString()} links${pend ? ` · ${pend} lookups waiting` : ''}`);
   if (RD && RD.open) {
     const line = roundLine();
@@ -1665,6 +2239,7 @@ function footStats() {
     else if (RD.type === 'steer') setText('#k-hop', `step ${ST.steps} · shortest ${ST.best} · ` + line);
     else if (RD.type === 'odd' && OD.playing >= 0) setText('#k-hop', `${['one', 'two', 'three'][OD.playing]} · ` + line);
     else if (RD.type === 'odd') setText('#k-hop', line);
+    else if (RD.hp !== undefined && RD.open) setText('#k-hop', RD.hp + line);
     void cur;
   }
 }
@@ -1672,12 +2247,17 @@ function footStats() {
 // ---------- nav, keys, idle ----------
 function setupNav() {
   document.querySelectorAll('#modes button[data-mode]').forEach(b => b.addEventListener('click', () => {
+    $('#more').classList.add('hide'); $('#more-btn').setAttribute('aria-expanded', 'false');
     if (b.dataset.mode === 'join') toggleJoin(); else enterMode(b.dataset.mode);
   }));
+  $('#more-btn').addEventListener('click', e => { e.stopPropagation(); const o = $('#more').classList.toggle('hide'); $('#more-btn').setAttribute('aria-expanded', String(!o)); });
+  document.addEventListener('click', e => { if (!e.target.closest('#more')) { $('#more').classList.add('hide'); $('#more-btn').setAttribute('aria-expanded', 'false'); } });
+  $('#team-merge').addEventListener('click', mergeTeams);
   const keys = { 1: 'cloud', 2: 'walk', 3: 'song', 4: 'pairs', 5: 'list', 6: 'hops', 7: 'steer', 8: 'twin', 9: 'odd', 0: 'bday' };
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (!$('#hand').classList.contains('hide')) return;
+    if (!$('#hand').classList.contains('hide') || !$('#bulk').classList.contains('hide')) return;
+    if (e.key === 'Escape') { $('#more').classList.add('hide'); return; }
     wake();
     if (keys[e.key]) { enterMode(keys[e.key]); e.preventDefault(); }
     else if (e.key === 'j') toggleJoin();
@@ -1687,7 +2267,7 @@ function setupNav() {
     else if (e.key === 'n' || e.key === 'ArrowRight') {
       if (WK.skip) WK.skip();
       else if (mode === 'walk') GO.walk();
-      else if (mode === 'song' || mode === 'hops' || mode === 'twin' || mode === 'odd') GO[mode]();
+      else if (mode === 'song' || mode === 'hops' || mode === 'twin' || mode === 'odd' || mode === 'nth' || mode === 'match' || mode === 'guilty' || mode === 'decade') GO[mode]();
     }
   });
   let idleT = 0;
@@ -1737,7 +2317,7 @@ function renderJoin() {
       el('span', { class: 'dot' + (on ? ' on' : ''), title: g.src === 'hand' ? 'added by hand' : on ? 'phone connected' : 'phone away' }),
       el('span', { class: 'nm' }, g.n),
       el('span', { class: 'pc' }, `${g.picks.length} pick${g.picks.length === 1 ? '' : 's'}`),
-      el('button', { type: 'button', 'aria-pressed': String(H.hostKey === g.k), title: 'mark as the host for the birthday round', onclick: () => { H.hostKey = H.hostKey === g.k ? null : g.k; saveSoon(); renderJoin(); } }, 'host'),
+      el('button', { type: 'button', 'aria-pressed': String(H.hostKey === g.k), title: 'flag the birthday baby for the birthday round', onclick: () => { H.hostKey = H.hostKey === g.k ? null : g.k; saveSoon(); renderJoin(); } }, 'birthday baby'),
       el('button', { type: 'button', 'aria-label': `remove ${g.n}`, onclick: () => { H.guests.delete(g.k); delete H.scores[g.k]; if (H.hostKey === g.k) H.hostKey = null; H.gv++; saveSoon(); dataChanged(); } }, '×')));
   }
 }
@@ -1772,7 +2352,7 @@ function setupJoin() {
   });
   $('#join-clear').addEventListener('click', () => {
     if (!confirm('clear everyone and every point from this room?')) return;
-    H.guests.clear(); H.scores = {}; H.hostKey = null; H.played = []; H.gv++;
+    H.guests.clear(); H.scores = {}; H.hostKey = null; H.played = []; H.teams = null; H.gv++;
     saveSoon();
     dataChanged(); renderBoard();
   });
@@ -1785,14 +2365,153 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 function setupHand() {
-  const pk = picker($('#h-picks'), { onChange: () => upd() });
+  const pk = picker($('#h-picks'), { labels: SLOTS, onChange: () => upd() });
+  const gpk = picker($('#h-gp'), { max: 1, labels: [GP] });
   const upd = () => { $('#h-ok').disabled = !($('#h-name').value.trim() && pk.get().length); };
   $('#h-name').addEventListener('input', upd);
-  $('#join-add').addEventListener('click', () => { $('#hand').classList.remove('hide'); $('#h-name').value = ''; pk.set([]); $('#h-name').focus(); });
+  $('#join-add').addEventListener('click', () => { $('#hand').classList.remove('hide'); $('#h-name').value = ''; pk.set([]); gpk.set([]); $('#h-name').focus(); });
   $('#h-cancel').addEventListener('click', () => $('#hand').classList.add('hide'));
   $('#h-ok').addEventListener('click', () => {
-    upsertGuest('h-' + rid(), { n: $('#h-name').value.trim(), picks: pk.get() }, 'hand');
+    upsertGuest('h-' + rid(), { n: $('#h-name').value.trim(), picks: pk.get(), gp: gpk.get()[0] }, 'hand');
     $('#hand').classList.add('hide');
+  });
+}
+
+// ---------- bulk import: a list or a csv collected in advance ----------
+const BK = { people: [], busy: false, tok: 0 };
+const EMAIL = /\S+@\S+\.\S+/, PHONE = /^[+(]?\d[\d\s().\-]{6,}$/;
+const NAMEH = /^(name|guest|guest name|first name|full name|invitee)$/i;
+const SKIPH = /^(status|rsvp|e-?mail|phone|mobile|cell|number|date|time|created|updated|timestamp|plus|\+\d|guests|party|count|response|attending|id|notes?|last name|surname)\b|e-?mail|phone|mobile/i;
+const junk = v => !v || EMAIL.test(v) || PHONE.test(v) || /^(yes|no|going|maybe|not going|declined|attending|invited|waitlist|pending|\d{1,2})$/i.test(v) || /^\d{1,4}[\/-]\d{1,2}[\/-]\d{1,4}/.test(v);
+function csvRows(text, d) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"' && !cell) q = true;
+    else if (ch === d) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  row.push(cell); rows.push(row);
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(Boolean));
+}
+function parseBulk(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const tabs = (first.match(/\t/g) || []).length, commas = (first.match(/,/g) || []).length;
+  const rows = csvRows(text, tabs && tabs >= commas ? '\t' : ',');
+  if (!rows.length) return [];
+  const cleanName = n => { n = (n || '').trim(); return !n || EMAIL.test(n) || PHONE.test(n) ? '' : n.slice(0, 24); };
+  const out = [], ni = rows[0].findIndex(h => NAMEH.test(h.trim()));
+  if (ni >= 0) {
+    const cols = rows[0].map((h, i) => ({ i, gp: /guilty/i.test(h), slot: /forever/i.test(h) ? 0 : /\b(16|sixteen)\b/i.test(h) ? 1 : /right ?now|lately|recent/i.test(h) ? 2 : -1 }))
+      .filter(c => c.i !== ni && (c.gp || !SKIPH.test(rows[0][c.i].trim())));
+    const ans = cols.filter(c => !c.gp);
+    if (ans.length === 3 && ans.every(c => c.slot < 0)) ans.forEach((c, k) => { c.slot = k; });
+    for (const r of rows.slice(1)) {
+      const n = cleanName(r[ni]); if (!n) continue;
+      const items = [];
+      for (const c of cols) for (const part of (r[c.i] || '').split(c.gp || ans.length !== 1 ? /;|\s\/\s|\n/ : /;|,|\s\/\s|\n/)) {
+        const v = part.trim();
+        if (!junk(v)) items.push({ typed: v, s: c.slot >= 0 ? c.slot : undefined, secret: c.gp });
+      }
+      out.push({ n, items: items.filter(x => x.secret).slice(0, 1).concat(items.filter(x => !x.secret).slice(0, 3)) });
+    }
+    return out;
+  }
+  for (const r of rows) {
+    const toks = r.flatMap(c => c.split(/;|\s\/\s|\t/)).map(x => x.trim()).filter(Boolean);
+    if (!toks.length) continue;
+    let name = toks[0];
+    const m = /^([^:/]{1,24}):\s*(\S.*)$/.exec(name);
+    if (m && !/^(https?|spotify)$/i.test(m[1])) { name = m[1]; toks[0] = m[2]; } else toks.shift();
+    name = cleanName(name); if (!name) continue;
+    const items = toks.filter(v => !junk(v)).slice(0, 3).map(v => ({ typed: v }));
+    if (items.length === 3) items.forEach((x, k) => { x.s = k; });
+    out.push({ n: name, items });
+  }
+  return out;
+}
+const normS = s => (s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+async function resolveAnswer(raw) {
+  const s = raw.replace(/^\s*(\d{1,2}[.)]|[-•*])\s+/, '').replace(/^["“‘']+|["”’']+$/g, '').trim();
+  let q = s, song = false, list;
+  if (/^(https?:\/\/|spotify:)/i.test(s)) {
+    const r = await M.resolveLink(s);
+    if (r && r.picks) return cleanPick(r.picks[0]);
+    if (!r || !r.query) return null;
+    list = await M.search(r.query);
+    if (r.kind === 'track') list.sort((a, b) => (b.k === 't') - (a.k === 't'));
+    return cleanPick(list[0]);
+  }
+  const m = /^(.+?)\s+[-–—]\s+(.+)$/.exec(s) || /^(.+?)\s+by\s+(.+)$/i.exec(s);
+  if (m) { q = m[1] + ' ' + m[2]; song = true; }
+  list = await M.search(q);
+  if (!song) return cleanPick(list[0]);
+  const nq = normS(q), tr = list.filter(x => x.k === 't');
+  return cleanPick(tr.find(t => nq.includes(normS(t.an)) && nq.includes(normS(t.tt))) || tr.find(t => nq.includes(normS(t.an))) || tr[0] || list[0]);
+}
+async function bulkRead(text) {
+  const tok = ++BK.tok;
+  BK.people = parseBulk(text).map(p => ({ n: p.n, items: p.items.map(it => ({ ...it, pick: null, done: false })) }));
+  if (!BK.people.length) { setText('#b-msg', 'nobody found in that. name first, then songs or artists.'); renderBulk(); return; }
+  BK.busy = true; renderBulk();
+  let i = 0; const total = BK.people.reduce((a, p) => a + p.items.length, 0);
+  for (const p of BK.people) for (const it of p.items) {
+    if (tok !== BK.tok) return;
+    setText('#b-msg', `looking up ${++i} of ${total}`);
+    try { it.pick = await resolveAnswer(it.typed); } catch (e) { it.pick = null; }
+    if (it.pick && it.s !== undefined) it.pick.s = it.s;
+    it.done = true; renderBulk();
+    await sleep(250);
+  }
+  BK.busy = false;
+  setText('#b-msg', 'fix or drop anything red, then add all.');
+  renderBulk();
+}
+function renderBulk() {
+  const ul = $('#b-list');
+  ul.textContent = '';
+  for (const p of BK.people) {
+    const pu = el('ul', { class: 'bk-picks' });
+    for (const it of p.items) {
+      const tag = it.secret ? 'guilty · ' : it.s !== undefined ? SLOTS[it.s].n + ' · ' : '';
+      const li = el('li', {},
+        el('span', { class: 'ty' }, tag + it.typed),
+        el('span', { class: 'mt ' + (!it.done ? '' : it.pick ? 'ok' : 'no') }, !it.done ? 'waiting' : it.pick ? pickLabel(it.pick) : 'no match'),
+        BK.busy ? null : el('button', { type: 'button', onclick: () => { it.fixing = !it.fixing; renderBulk(); } }, 'fix'),
+        BK.busy ? null : el('button', { type: 'button', onclick: () => { p.items = p.items.filter(x => x !== it); renderBulk(); } }, 'drop'));
+      if (it.fixing) {
+        const box = el('div', { class: 'picker' });
+        li.append(box);
+        const pk = picker(box, { max: 1, labels: [{ l: 'search again', h: 'an artist, a song, or a link' }], onChange: () => { const g = pk.get()[0]; if (g) { it.pick = it.s !== undefined ? { ...g, s: it.s } : { ...g, s: undefined }; it.fixing = false; renderBulk(); } } });
+      }
+      pu.append(li);
+    }
+    ul.append(el('li', { class: 'bk-p' },
+      el('div', { class: 'bk-h' }, el('input', { type: 'text', value: p.n, maxlength: 24, 'aria-label': 'name', readonly: BK.busy, oninput: e => { p.n = e.target.value; } }),
+        BK.busy ? null : el('button', { type: 'button', onclick: () => { BK.people = BK.people.filter(x => x !== p); renderBulk(); } }, 'drop')),
+      pu));
+  }
+  $('#b-add').disabled = BK.busy || !BK.people.some(p => p.items.some(i => i.pick && !i.secret));
+}
+function setupBulk() {
+  const close = () => { BK.tok++; BK.busy = false; $('#bulk').classList.add('hide'); };
+  $('#join-bulk').addEventListener('click', () => { $('#bulk').classList.remove('hide'); $('#b-text').focus(); });
+  $('#b-close').addEventListener('click', close);
+  $('#b-read').addEventListener('click', () => { const t = $('#b-text').value; $('#b-text').value = ''; if (t.trim()) bulkRead(t); });
+  $('#b-file').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) bulkRead(await f.text()); });
+  $('#b-add').addEventListener('click', () => {
+    let n = 0; const left = [];
+    for (const p of BK.people) {
+      const picks = p.items.filter(i => i.pick && !i.secret).map(i => i.pick).slice(0, 3);
+      const sec = p.items.find(i => i.secret && i.pick);
+      if (picks.length && p.n.trim()) { upsertGuest('h-' + rid(), { n: p.n.trim(), picks, gp: sec && sec.pick }, 'hand'); n++; } else left.push(p);
+    }
+    BK.people = left; renderBulk();
+    setText('#b-msg', `added ${n}.${left.length ? ` ${left.length} with no match are still listed.` : ''}`);
+    if (!left.length) setTimeout(close, 900);
   });
 }
 
@@ -1841,8 +2560,12 @@ async function savePoster() {
 async function guestMain() {
   $('#guest').classList.remove('hide');
   setText('#g-code', DEMO ? 'demo' : 'room ' + K.code);
-  const me = { id: '', name: '', picks: [] };
-  const pk = picker($('#g-picks'), { onChange: () => upd() });
+  const me = { id: '', name: '', picks: [], gp: null };
+  const pk = picker($('#g-picks'), { labels: SLOTS, onChange: () => upd() });
+  const gpk = picker($('#g-gp'), { max: 1, labels: [GP] });
+  const apk = picker($('#g-ask-pick'), { max: 1, labels: [{ l: 'one artist', h: 'an artist, a song, or a link' }], onChange: () => { $('#g-ask-send').disabled = !apk.get().length || !!asked[askId]; } });
+  let askId = '';
+  const asked = {};
   const upd = () => { $('#g-send').disabled = !($('#g-name').value.trim() && pk.get().length); };
   $('#g-name').addEventListener('input', upd);
   const myKey = 'party.me.' + K.roomId;
@@ -1857,19 +2580,20 @@ async function guestMain() {
     $('#g-form').classList.add('hide'); $('#g-room').classList.remove('hide');
     setText('#g-hi', `you are on the map, ${me.name}.`);
     const ul = $('#g-mine'); ul.textContent = '';
-    for (const p of me.picks) ul.append(el('li', {}, el('b', {}, p.k === 't' ? p.tt : p.an), el('span', {}, p.k === 't' ? `song · ${p.an}` : 'artist')));
+    for (const p of me.picks) ul.append(el('li', {}, el('b', {}, p.k === 't' ? p.tt : p.an), el('span', {}, (slotName(p) ? slotName(p) + ' · ' : '') + (p.k === 't' ? `song · ${p.an}` : 'artist'))));
+    if (me.gp) ul.append(el('li', {}, el('b', {}, me.gp.k === 't' ? me.gp.tt : me.gp.an), el('span', {}, 'guilty pleasure · only you can see this')));
     render();
   };
   $('#g-send').addEventListener('click', async () => {
     me.name = $('#g-name').value.trim().slice(0, 24);
-    me.picks = pk.get();
+    me.picks = pk.get(); me.gp = gpk.get()[0] || null;
     await saveMe();
-    if (NETg) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, t: Date.now() }).catch(() => {});
+    if (NETg) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, gp: me.gp, t: Date.now() }).catch(() => {});
     showRoom();
   });
   $('#g-edit').addEventListener('click', () => {
     $('#g-room').classList.add('hide'); $('#g-form').classList.remove('hide');
-    $('#g-name').value = me.name; pk.set(me.picks); upd();
+    $('#g-name').value = me.name; pk.set(me.picks); gpk.set(me.gp ? [me.gp] : []); upd();
   });
 
   const modeNames = Object.fromEntries(Object.entries(MODES).map(([k, v]) => [k, v.title]));
@@ -1886,13 +2610,23 @@ async function guestMain() {
     const r = s && s.round;
     const box = $('#g-vote');
     const res = $('#g-res');
+    const tm = s && s.teams;
+    setText('#g-team', tm && tm.m[my] !== undefined ? `you are on ${tm.n[tm.m[my]]}. ${tm.n[0]} ${tm.tot[0]} · ${tm.n[1]} ${tm.tot[1]}` : '');
+    const ask = r && r.open && s.ask && s.ask.k.includes(my) ? s.ask : null;
+    $('#g-ask').classList.toggle('hide', !ask);
+    if (ask) {
+      box.classList.add('hide'); res.textContent = '';
+      if (askId !== r.id) { askId = r.id; apk.set([]); $('#g-ask-send').disabled = true; setText('#g-ask-msg', ''); }
+      setText('#g-ask-q', `name one artist that connects you to ${ask.n[ask.k.indexOf(my) ? 0 : 1]}`);
+      return;
+    }
     if (!r) { box.classList.add('hide'); res.textContent = ''; return; }
     if (r.open) {
       box.classList.remove('hide');
       res.textContent = ''; res.classList.remove('ok');
       setText('#g-q', r.q);
       let opts = r.opts;
-      if (!opts) opts = (s.guests || []).filter(g => !(r.type === 'twin' && g.k === my)).map(g => ({ v: g.k, l: g.n }));
+      if (!opts) opts = (s.guests || []).filter(g => !((r.type === 'twin' || r.type === 'guilty') && g.k === my)).map(g => ({ v: g.k, l: g.n }));
       const wrap = $('#g-opts');
       const sig = r.id + ':' + opts.map(o => o.v).join(',');
       if (wrap.dataset.sig !== sig) {
@@ -1911,6 +2645,14 @@ async function guestMain() {
       } else res.textContent = '';
     }
   }
+  $('#g-ask-send').addEventListener('click', () => {
+    const p = apk.get()[0];
+    if (!p || asked[askId]) return;
+    asked[askId] = true;
+    if (NETg) NETg.reply.set({ r: askId, pick: p }).catch(() => {});
+    $('#g-ask-send').disabled = true;
+    setText('#g-ask-msg', 'sent. watch the screen.');
+  });
   function cast(r, v) {
     if (voted[r.id] !== undefined) return;
     voted[r.id] = v;
@@ -1946,7 +2688,7 @@ async function guestMain() {
   };
   NETg.need.onChange(offer); offer(NETg.need.get());
   if (NETg.show.get()) lastShow = NETg.show.get();
-  if (me.name && me.picks.length) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, t: Date.now() }).catch(() => {});
+  if (me.name && me.picks.length) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, gp: me.gp, t: Date.now() }).catch(() => {});
   render();
 }
 

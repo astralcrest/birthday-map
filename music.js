@@ -3,7 +3,7 @@ const DZ = 'https://api.deezer.com/';
 const CACHE_KEY = 'party.music.v1';
 const PREVIEW_TTL = 8 * 60e3; // deezer preview links carry a token that expires in about 15 min
 
-export const mem = { art: {}, rel: {}, gen: {} };
+export const mem = { art: {}, rel: {}, gen: {}, yr: {} };
 const fresh = { top: new Map(), trk: new Map() };
 const listeners = new Set();
 export const stats = { calls: 0, fails: 0 };
@@ -18,6 +18,7 @@ function loadCache() {
     Object.assign(mem.art, d.art || {});
     Object.assign(mem.rel, d.rel || {});
     Object.assign(mem.gen, d.gen || {});
+    Object.assign(mem.yr, d.yr || {});
   } catch (e) { /* storage blocked or corrupt: start empty */ }
 }
 loadCache();
@@ -29,7 +30,7 @@ function saveSoon() {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(mem)); }
     catch (e) {
       try { // over quota: keep only related lists, which are the expensive part
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ art: mem.art, rel: mem.rel, gen: {} }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ art: mem.art, rel: mem.rel, gen: {}, yr: mem.yr }));
       } catch (e2) { /* give up quietly */ }
     }
   }, 1500);
@@ -260,6 +261,21 @@ export async function genre(aid) {
   mem.gen[aid] = g;
   saveSoon();
   return g;
+}
+
+// release year of a pick: the track's own date, or the artist's top track for an artist pick (0 = not found)
+export async function yearOf(p) {
+  const key = p.tid ? 't' + p.tid : 'a' + p.aid;
+  if (mem.yr[key] !== undefined) return mem.yr[key];
+  let tid = p.tid;
+  if (!tid) { const tops = await top(p.aid, 'lo'); tid = tops[0] && tops[0].tid; }
+  if (!tid) { mem.yr[key] = 0; return 0; }
+  const t = await dz('track/' + tid, {}, 'lo');
+  if (!t || !t.id) return 0;
+  const m = /^(\d{4})/.exec(t.release_date || '');
+  const y = m && +m[1] > 1900 ? +m[1] : 0;
+  mem.yr[key] = y; saveSoon();
+  return y;
 }
 
 // what to play for a pick or an artist stop

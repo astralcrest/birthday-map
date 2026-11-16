@@ -525,6 +525,9 @@ function setupStage() {
   };
   new ResizeObserver(fit).observe(c);
   fit();
+  // the points panel sits under the mode buttons however many rows they wrap to
+  const md = $('#modes'), bd = $('#board');
+  if (md && bd) new ResizeObserver(() => { bd.style.top = innerWidth > 860 ? (md.offsetTop + md.offsetHeight + 16) + 'px' : ''; }).observe(md);
   buildGrid();
   c.addEventListener('mousemove', onStageMove);
   c.addEventListener('mouseleave', () => setText('#pairs-hover', ''));
@@ -1581,10 +1584,11 @@ async function bridgeStart() {
   clearTexts();
   if (!pairs.length) { setText('#k-q', 'the phones on the map are out of reach of each other.'); return; }
   pairs.sort((x, y) => y[2] - x[2]);
-  const [A, B] = pickOne(pairs.slice(0, 4));
+  const apart = pairs.filter(x => x[2] >= 2);
+  const [A, B, dAB] = pickOne((apart.length ? apart : pairs).slice(0, 4));
   const tok = ++WK.tok;
   Object.assign(BR, { A, B, cur: null });
-  setText('#m-sub', `${A.n} and ${B.n} are far apart on the map.`);
+  setText('#m-sub', dAB >= 2 ? `${A.n} and ${B.n} are far apart on the map.` : `${A.n} and ${B.n} are already neighbors. an easy one.`);
   setText('#k-q', `${A.n} and ${B.n}: name one artist that connects you.`);
   setText('#k-track', BR_RULE + ' everyone else votes.');
   setText('#k-go', 'test the bridges');
@@ -1732,7 +1736,7 @@ function teamsSplit() {
     if (nm[0] === m0 && nm[1] === m1) break;
     [m0, m1] = nm;
   }
-  const need = Math.max(2, Math.floor(n * .3));
+  const need = Math.max(2, Math.floor(n * .4));
   for (const t of [0, 1]) while (side.filter(s => s === t).length < need) {
     const mo = t ? m1 : m0, ot = t ? m0 : m1;
     let best = -1, bv = Infinity;
@@ -1783,20 +1787,29 @@ function drawTeams(c, t, dt) {
   const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
   const P = drawCloud(c, t, dt, {
     rect: R, fs: fontPx(22),
-    off: (g, q) => { const tt = teamOfKey(g.k), sg = tt ? 1 : -1, ce = cen[tt]; return [(ce[0] - q[0]) * .35 * s + dx * sg * .4 * s, (ce[1] - q[1]) * .35 * s + dy * sg * .4 * s]; },
+    off: (g, q) => { const tt = teamOfKey(g.k), sg = tt ? 1 : -1, ce = cen[tt]; return [(ce[0] - q[0]) * .1 * s + dx * sg * .4 * s, (ce[1] - q[1]) * .1 * s + dy * sg * .4 * s]; },
     tint: g => teamOfKey(g.k) ? COL.rose : COL.mint,
   });
   if (!P) return;
   const tot = teamTotals();
   c.font = `600 ${fontPx(30)}px "Instrument Sans", sans-serif`; c.textBaseline = 'bottom';
-  [0, 1].forEach(tt => {
+  const lh = fontPx(38), lab = [0, 1].map(tt => {
     const mem = P.filter((_, i) => teamOfKey(DV.list[i].k) === tt);
-    if (!mem.length) return;
+    if (!mem.length) return null;
+    const text = `${T.n[tt]} · ${tot[tt]}`, w = c.measureText(text).width;
     const x = mem.reduce((a, p) => a + p[0], 0) / mem.length, y = Math.min(...mem.map(p => p[1])) - 44;
-    c.fillStyle = tt ? COL.rose : COL.mint; c.globalAlpha = s; c.textAlign = 'center';
-    c.fillText(`${T.n[tt]} · ${tot[tt]}`, clamp(x, 120, W - 120), Math.max(fontPx(34), y));
+    return { tt, text, w, x: clamp(x, w / 2 + 16, (wide() ? W - joinW() - 290 : W) - w / 2 - 16), y: Math.max(wide() ? Hh * .2 + lh : lh, y), lo: Math.max(...mem.map(p => p[1])) + 44 + lh };
+  }).filter(Boolean);
+  if (lab.length === 2 && Math.abs(lab[0].x - lab[1].x) < (lab[0].w + lab[1].w) / 2 + 24 && Math.abs(lab[0].y - lab[1].y) < lh) {
+    const low = lab[0].lo >= lab[1].lo ? lab[0] : lab[1];
+    low.y = Math.min(Hh - 12, low.lo);
+    if (Math.abs(lab[0].y - lab[1].y) < lh) low.y = (low === lab[0] ? lab[1] : lab[0]).y + lh;
+  }
+  for (const l of lab) {
+    c.fillStyle = l.tt ? COL.rose : COL.mint; c.globalAlpha = s; c.textAlign = 'center';
+    c.fillText(l.text, l.x, l.y);
     c.globalAlpha = 1;
-  });
+  }
 }
 
 // ---- decade roulette ----

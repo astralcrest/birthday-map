@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css?v=20261120n">
+<link rel="stylesheet" href="party.css?v=20261120q">
 </head>
 <body>
 <a id="boot-slow" href="">still loading. if nothing shows up, tap here to try again.</a>
@@ -120,6 +120,15 @@
     <p class="how">host: g opens the guest list · j brings this code back any time</p>
   </div>
 
+  <div id="howcard" class="hide" role="dialog" aria-label="how this game works">
+    <div class="hw-in">
+      <p class="hw-k">how this works</p>
+      <h2 id="hw-title"></h2>
+      <ol id="hw-steps"></ol>
+      <p class="hw-how">any key to start · h brings this back</p>
+    </div>
+  </div>
+
   <div id="bigjoin" class="hide" role="dialog" aria-label="scan to join">
     <div class="bj-qr"><canvas id="qr3" width="10" height="10" aria-label="join code"></canvas></div>
     <div class="bj-t">
@@ -198,10 +207,11 @@
     <p class="g-team" id="g-team"></p>
     <section id="g-fin" class="g-fin hide" aria-live="polite"></section>
     <section id="g-keep" class="g-keep hide" aria-label="your keepsake">
-      <p class="field-h">a keepsake from tonight</p>
+      <p class="field-h">your goodie bag</p>
       <h2 id="gk-name"></h2>
       <canvas id="gk-map" aria-hidden="true"></canvas>
       <ul id="gk-facts" class="mine"></ul>
+      <ol id="gk-bag" class="gf-list hide"></ol>
       <p class="note">screenshot it to keep it.</p>
     </section>
     <div id="g-ask" class="hide">
@@ -252,6 +262,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=20261120n"></script>
+<script type="module" src="app.js?v=20261120q"></script>
 </body>
 </html>

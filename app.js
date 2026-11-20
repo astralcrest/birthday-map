@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120n';
-import * as Gr from './graph.js?v=20261120n';
-import { Player } from './audio.js?v=20261120n';
+import * as M from './music.js?v=20261120q';
+import * as Gr from './graph.js?v=20261120q';
+import { Player } from './audio.js?v=20261120q';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -71,11 +71,14 @@ const slotName = p => p && p.s !== undefined ? SLOTS[p.s].n : '';
 const pickLabel = p => p.k === 't' ? `${p.tt} · ${p.an}` : p.an;
 
 // ---------- gate ----------
+// a private start link can carry the guest list after the #, so it never leaves the browser
+let AUTOLIST = '';
 async function gate() {
   if (DEMO) return derive('demo');
   const frag = new URLSearchParams(location.hash.slice(1));
   const fromLink = frag.get('k');
-  if (fromLink) history.replaceState(null, '', location.pathname + location.search);
+  try { const l = frag.get('l'); if (l && ROLE === 'host') { AUTOLIST = new TextDecoder().decode(Uint8Array.from(atob(l.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))); sessionStorage.setItem('party.list', AUTOLIST); } else if (ROLE === 'host') AUTOLIST = sessionStorage.getItem('party.list') || ''; } catch (e) { /* unreadable list */ }
+  if (fromLink || frag.get('l')) history.replaceState(null, '', location.pathname + location.search);
   let remembered = null;
   try { remembered = sessionStorage.getItem('party.pw'); } catch (e) { /* blocked */ }
   const pre = fromLink || remembered;
@@ -463,6 +466,7 @@ function keepsakes() {
     const pts = Object.values(H.scores).filter(v => v > 0);
     const xy = L.map(g => (pos.get(g.k) || [0, 0]).map(v => Math.round(v * 1000) / 1000));
     const c = {};
+    const taken = new Set(L.flatMap(g => g.picks.map(p => +p.aid)));
     for (const g of H.guests.values()) {
       if (g.src !== 'p2p') continue;
       const i = DV.idx.has(g.k) ? DV.idx.get(g.k) : -1, pt = H.scores[g.k] || 0;
@@ -473,6 +477,18 @@ function keepsakes() {
         if (hops.get(g.k) != null) o.hp = hops.get(g.k);
         if (i >= 0 && i === f.center) o.sp = 'the middle of the room';
         else if (i >= 0 && i === f.outlier) o.sp = 'the wildcard';
+      }
+      // the goodie bag: a song from the nearest person, and one neighbor nobody brought
+      if (i >= 0 && L.length >= 2) {
+        let j = twinsOf(i)[0];
+        if (j == null) { let m = Infinity; DV.D[i].forEach((d, q) => { if (q !== i && d < m) { m = d; j = q; } }); }
+        const tg = j != null && L[j];
+        const gp = tg && (tg.picks.find(p => p.tid) || tg.picks[0]);
+        if (gp) o.gf = [gp.tid ? gp.tt : gp.an, gp.tid ? gp.an : '', gp.tid || 0, tg.k === H.hostKey ? 'the birthday baby' : tg.n];
+        for (const p of g.picks) {
+          const nb = (M.mem.rel[p.aid] || []).find(a => !taken.has(+a) && M.artistName(a));
+          if (nb) { o.nw = [M.artistName(nb), p.an]; break; }
+        }
       }
       c[g.k] = o;
     }
@@ -534,6 +550,14 @@ function fakeVotes(rd) {
 }
 
 // ---------- host: start ----------
+// the start link's list is read once per room; a reload or a second open never doubles anyone
+function autoList() {
+  if (!AUTOLIST || H.guests.size) return;
+  bulkRead(AUTOLIST).then(() => {
+    if (H.guests.size || !BK.people.some(p => p.items.some(i => i.pick && i.s !== 'gp'))) { if (!H.guests.size) $('#bulk').classList.remove('hide'); return; }
+    BK.add();
+  }).catch(() => { $('#bulk').classList.remove('hide'); });
+}
 async function hostMain() {
   $('#host').classList.remove('hide');
   setText('#room-tag', DEMO ? 'demo' : 'room ' + K.code);
@@ -544,7 +568,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120n').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120q').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -552,6 +576,7 @@ async function hostMain() {
   setupHand();
   setupBulk();
   setupModes();
+  autoList();
   $('#sound').classList.remove('hide');
   const soundOn = async () => {
     if (!(await player.unlock())) { setText('#sound-go', 'tap again for sound'); return; }
@@ -587,7 +612,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120n');
+    const { openRoom } = await import('./sync.js?v=20261120q');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -632,7 +657,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120n').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120q').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -2508,11 +2533,47 @@ const DRAW = {
   nth: (c, t, dt) => NT.reveal ? drawWalk(c, t, dt) : drawNth(c, t), match: drawMatch, guilty: (c, t) => drawSong(c, t), bridge: drawBridge, teams: drawTeams, decade: drawDecade,
   twin: (c, t, dt) => drawCloud(c, t, dt, { twins: true, rect: twinRect(), noLinks: !!(RD && RD.type === 'twin' && RD.open) }),
   pairs: drawPairs, list: drawList,
-  awards: (c, t, dt) => drawCloud(c, t, dt, { rect: sideRect(), lit: AW.lit && AW.lit.size ? AW.lit : null, fs: fontPx(W < 1500 ? 21 : 28), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }),
+  awards: (c, t, dt) => { drawCloud(c, t, dt, { rect: sideRect(), lit: AW.lit && AW.lit.size ? AW.lit : null, fs: fontPx(W < 1500 ? 21 : 28), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }); drawConfetti(c, t, dt); },
   toast: (c, t) => drawSong(c, t, TS.on ? 1.15 : .9),
   photo: (c, t, dt) => drawCloud(c, t, dt, { rect: photoRect(), fs: fontPx(30), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }),
   sing: (c, t) => drawSong(c, t),
 };
+// how each game works, in three short lines a first-timer can follow
+const HOW = {
+  cloud: ['every dot is one of you.', 'your dot sits next to the people whose music is most like yours.', 'a line joins you to your two nearest people.'],
+  walk: ['we pick two of you.', 'we hop from one person\u2019s music to the other\u2019s, one similar artist at a time.', 'fewer hops means closer taste. just watch and listen.'],
+  song: ['a song that one of you brought starts playing.', 'on your phone, tap who you think brought it.', 'a right guess is a point.'],
+  odd: ['three songs play.', 'two were brought by the same person. one was not.', 'on your phone, tap the one that does not belong.'],
+  steer: ['we start at one artist and want to reach another.', 'at every step the room votes on which similar artist to hop to.', 'get there in as few hops as you can.'],
+  twin: ['somebody here has taste closest to yours.', 'on your phone, guess who.', 'then the map shows the real answer.'],
+  hops: ['two picks go up on the screen.', 'on your phone, bet how many hops of similar artists join them.', 'the closest bet wins. then we walk it.'],
+  sing: ['the room votes for the one song everybody knows.', 'the winner plays.', 'sing.'],
+  awards: ['the map hands out prizes.', 'the middle of the room, the wildcard, most points and more.', 'one at a time. space for the next.'],
+  bday: ['every one of you gets a road of similar artists to the birthday baby.', 'on your phone, guess who is closest.', 'then every road lights up.'],
+  toast: ['get a glass.', 'we count down together.', 'then: happy birthday.'],
+  photo: ['everyone on the map, one last time.', 'look at the screen.', 'your phone now holds your goodie bag.'],
+  list: ['every song from tonight, in one order.', 'press play here to hear them.', 'the same list is on your phone, with links.'],
+  pairs: ['every two of you get a score.', 'it counts the hops between your picks.', 'fewer hops, higher score.'],
+  nth: ['one clip plays from somewhere on a path between two picks.', 'on your phone, say which end it is nearer.', 'a right guess is a point.'],
+  match: ['two dots light up with no names.', 'on your phone, guess who they are.', 'a right guess is a point.'],
+  guilty: ['one secret song plays.', 'on your phone, guess whose guilty pleasure it is.', 'a right guess is a point.'],
+  bridge: ['we pick two of you.', 'together, name one artist that connects your picks.', 'the map checks it.'],
+  teams: ['the map pulls the room into two taste camps.', 'find your side.', 'that is your team.'],
+  decade: ['a song plays.', 'on your phone, pick the decade it is from.', 'a right guess is a point.'],
+};
+let howT = 0;
+const howSeen = new Set();
+function toggleHow(on, m = mode) {
+  const box = $('#howcard');
+  if (on === undefined) on = box.classList.contains('hide');
+  clearTimeout(howT);
+  if (!on || !HOW[m]) { box.classList.add('hide'); return; }
+  setText('#hw-title', MODES[m].title);
+  const ol = $('#hw-steps'); ol.textContent = '';
+  HOW[m].forEach(t => ol.append(el('li', {}, t)));
+  box.classList.remove('hide');
+  howT = setTimeout(() => box.classList.add('hide'), 14000);
+}
 const MODES = {
   cloud: { title: 'the cloud', sub: 'everyone here, placed by taste.', go: '' },
   walk: { title: 'the walk', sub: '', go: 'next pair' },
@@ -2541,24 +2602,51 @@ const MODES = {
 const AW = { list: [], i: -1, lit: null, tok: 0, pub: null };
 function awardList() {
   const f = DV.facts, L = DV.list, D = DV.D, out = [];
-  const rows = Object.entries(H.scores).filter(([k]) => H.guests.has(k)).sort((a, b) => b[1] - a[1]);
-  if (rows.length) { const top = rows.filter(r => r[1] === rows[0][1]).map(r => r[0]); out.push({ k: 'most points', v: andList(top.map(nameOf)), s: `${rows[0][1]} point${rows[0][1] === 1 ? '' : 's'}`, lit: top }); }
+  const all = L.map(g => g.k);
   if (L.length >= 2) {
-    out.push({ k: 'the middle of the room', v: L[f.center].n, s: 'closest to everyone, on average', lit: [L[f.center].k] });
+    // the room first: these belong to everyone
+    const ds = []; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) if (D[i][j] < Gr.FAR) ds.push(D[i][j]);
+    if (ds.length) out.push({ k: 'this room, in one number', v: hopsTxt(ds.reduce((x, y) => x + y, 0) / ds.length), s: 'the average distance between any two of you.', lit: all });
+    if (f.bridge) out.push({ k: 'the artist holding this room together', v: M.artistName(f.bridge), s: `links ${f.bridgeCount} pairs of you`, lit: all, pick: { k: 'a', aid: f.bridge, an: M.artistName(f.bridge) } });
     const [a, b] = f.closest;
-    out.push({ k: 'the closest pair', v: `${L[a].n} + ${L[b].n}`, s: `${hopsTxt(D[a][b])} apart`, lit: [L[a].k, L[b].k] });
-    if (f.bridge) out.push({ k: 'the bridge', v: M.artistName(f.bridge), s: `links ${f.bridgeCount} pairs of you`, lit: [] });
+    out.push({ k: 'the twins', v: `${L[a].n} + ${L[b].n}`, s: `${hopsTxt(D[a][b])} apart. basically one playlist.`, lit: [L[a].k, L[b].k] });
+    out.push({ k: 'the middle of the room', v: L[f.center].n, s: 'closest to everyone, on average. the glue.', lit: [L[f.center].k] });
     if (L.length >= 3 && f.outlier >= 0) out.push({ k: 'the wildcard', v: L[f.outlier].n, s: 'furthest from the pack, in the best way', lit: [L[f.outlier].k] });
     if (f.widest >= 0) out.push({ k: 'the widest taste', v: L[f.widest].n, s: 'their own picks sit furthest apart', lit: [L[f.widest].k] });
+    const fans = L.flatMap(g => g.picks.map(p => ({ g, p, n: M.artistFans(p.aid) }))).filter(x => x.n > 0).sort((x, y) => y.n - x.n);
+    if (fans.length >= 4) {
+      const top = fans[0], low = fans[fans.length - 1];
+      out.push({ k: 'the crowd pleaser', v: top.g.n, s: `brought ${top.p.an}, the biggest name in the room`, lit: [top.g.k], pick: top.p });
+      if (low.g.k !== top.g.k) out.push({ k: 'the deep cut', v: low.g.n, s: `brought ${low.p.an}. almost nobody knows it. now we all do.`, lit: [low.g.k], pick: low.p });
+    }
   }
   // the artist most roads home pass through
   if (BDP.rows) {
     const cnt = new Map();
     for (const r of BDP.rows) if (r.path) for (const v of r.path.slice(1, -1)) cnt.set(v, (cnt.get(v) || 0) + 1);
     const best = [...cnt.entries()].filter(e => e[0] !== f.bridge).sort((a, b) => b[1] - a[1])[0];
-    if (best && best[1] >= 3) out.push({ k: 'most roads home pass', v: M.artistName(best[0]), s: `${best[1]} of your roads to the birthday baby go through here`, lit: [] });
+    if (best && best[1] >= 3) out.push({ k: 'the crossroads', v: M.artistName(best[0]), s: `${best[1]} of your roads to the birthday baby go through here`, lit: [], pick: { k: 'a', aid: best[0], an: M.artistName(best[0]) } });
   }
+  // points go last
+  const rows = Object.entries(H.scores).filter(([k]) => H.guests.has(k)).sort((a, b) => b[1] - a[1]);
+  if (rows.length && rows[0][1] > 0) { const top = rows.filter(r => r[1] === rows[0][1]).map(r => r[0]); out.push({ k: 'most points tonight', v: andList(top.map(nameOf)), s: `${rows[0][1]} point${rows[0][1] === 1 ? '' : 's'}`, lit: top }); }
   return out;
+}
+// crisp confetti in the map's own colors
+const CONF = [];
+function confetti() {
+  const cols = [COL.mint, COL.ice, COL.ink, COL.rose];
+  for (let i = 0; i < 140; i++) CONF.push({ x: W * (.08 + .5 * Math.random()), y: -20 - Math.random() * Hh * .3, vx: (Math.random() - .5) * 160, vy: 180 + Math.random() * 320, s: 6 + Math.random() * 10, c: cols[i % cols.length], w: Math.random() * 6.28 });
+}
+function drawConfetti(c, t, dt) {
+  if (!CONF.length) return;
+  const d = Math.min(dt || .016, .05);
+  for (let i = CONF.length - 1; i >= 0; i--) {
+    const p = CONF[i];
+    p.x += (p.vx + Math.sin(t * 3 + p.w) * 60) * d; p.y += p.vy * d;
+    if (p.y > Hh + 30) { CONF.splice(i, 1); continue; }
+    c.fillStyle = p.c; c.fillRect(Math.round(p.x), Math.round(p.y), Math.round(p.s), Math.round(p.s * (.5 + .5 * Math.abs(Math.sin(t * 4 + p.w)))));
+  }
 }
 async function awardNext() {
   if (AW.i < 0) AW.list = awardList();
@@ -2566,9 +2654,10 @@ async function awardNext() {
   AW.i++;
   if (AW.i >= AW.list.length) {
     AW.lit = null; clearTexts();
-    setText('#k-q', AW.list.length ? 'that is every award.' : 'no awards yet. play a round first.');
+    setText('#k-q', AW.list.length ? 'that is every award. you are all on the map.' : 'no awards yet. play a round first.');
     setText('#k-go', 'again'); AW.i = -1;
-    AW.pub = { end: AW.list.length ? 'that is every award.' : 'no awards yet.' }; publish();
+    if (AW.list.length) confetti();
+    AW.pub = { end: AW.list.length ? 'that is every award. you are all on the map.' : 'no awards yet.' }; publish();
     return;
   }
   const a = AW.list[AW.i];
@@ -2578,8 +2667,17 @@ async function awardNext() {
   setText('#k-go', '');
   AW.lit = new Set();
   AW.pub = { i: AW.i + 1, n: AW.list.length, k: a.k }; publish();
-  await sleep(1500);
-  if (tok !== AW.tok || mode !== 'awards') return;
+  // the drumroll: the room gets a beat to shout a guess
+  const wp = a.pick || (a.lit.length && a.lit.length <= 2 && H.guests.get(a.lit[0]) && H.guests.get(a.lit[0]).picks[0]) || null;
+  const pr = wp ? M.previewFor(wp).catch(() => null) : Promise.resolve(null);
+  if (player.ready) player.stop(.5);
+  for (const d of ['and it goes to', 'and it goes to .', 'and it goes to . .', 'and it goes to . . .']) {
+    setText('#k-track', d);
+    await sleep(650);
+    if (tok !== AW.tok || mode !== 'awards') return;
+  }
+  chime(AW.i); confetti();
+  pr.then(pv => { if (tok === AW.tok && mode === 'awards' && pv && player.ready) player.play(pv.url, { at: 0, fadeIn: .3 }); });
   setText('#k-ans', a.v);
   setText('#k-track', a.s);
   AW.lit = new Set(a.lit);
@@ -2776,6 +2874,7 @@ function enterMode(m, keepAudio) {
   if (m === 'toast') { ++TS.tok; toastEnter(); }
   if (m === 'photo') photoEnter();
   tallySet(m, 'enter');
+  if (changed && !DEMO && !howSeen.has(m)) { howSeen.add(m); toggleHow(true, m); } else toggleHow(false);
   if (changed && savedAt) saveSoon();
   $('#more-btn').setAttribute('aria-current', String(NEWM.has(m)));
   if (JUKE.has(m) && player && player.ready) cloudShuffle();
@@ -2899,9 +2998,11 @@ function setupNav() {
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!$('#hand').classList.contains('hide') || !$('#bulk').classList.contains('hide')) return;
-    if (e.key === 'Escape') { $('#more').classList.add('hide'); toggleBig(false); return; }
+    if (e.key === 'Escape') { $('#more').classList.add('hide'); toggleBig(false); toggleHow(false); return; }
     wake();
     if (!$('#bigjoin').classList.contains('hide') && !['m', 'f', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); toggleBig(false); if (e.key === 'g') toggleJoin(true); return; }
+    if (!$('#howcard').classList.contains('hide') && !['m', 'f', 'ArrowUp', 'ArrowDown'].includes(e.key) && !keys[e.key]) { e.preventDefault(); toggleHow(false); return; }
+    if (e.key === 'h') { toggleHow(); return; }
     if (e.key === 'm') { player.muted = !player.muted; if (player.master) player.master.gain.value = player.muted ? 0 : vol; footNote(player.muted ? 'sound off · m turns it on' : 'sound on'); return; }
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); vol = clamp(vol + (e.key === 'ArrowUp' ? .1 : -.1), 0, 1); if (player.master && !player.muted) player.master.gain.value = vol; footNote(`volume ${Math.round(vol * 100)}`); return; }
     if (keys[e.key]) {
@@ -3329,7 +3430,7 @@ function setupBulk() {
   $('#b-close').addEventListener('click', close);
   $('#b-read').addEventListener('click', () => { const t = $('#b-text').value; if (t.trim()) bulkRead(t); });
   $('#b-file').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) bulkRead(await f.text()); });
-  $('#b-add').addEventListener('click', () => {
+  $('#b-add').addEventListener('click', BK.add = () => {
     let n = 0; const left = [];
     for (const p of BK.people) {
       const picks = p.items.filter(i => i.pick && i.s !== 'gp').map(i => i.pick).slice(0, 3);
@@ -3565,6 +3666,12 @@ async function guestMain() {
     if (c.i < 0 && !c.home) row('no dot tonight', 'you played every round anyway');
     const pts = `${c.pt || 0} point${c.pt === 1 ? '' : 's'}`;
     row(c.rk ? `${pts} · ${ord(c.rk)} place` : pts, 'your night in the game');
+    const bag = $('#gk-bag'); bag.textContent = '';
+    const lk = (q, tid) => el('span', { class: 'a' }, el('a', { href: M.spotifyLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'), el('a', { href: M.appleLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'apple'));
+    const gift = (h, t, s, q, tid) => bag.append(el('li', {}, el('span', { class: 't' }, el('span', {}, h), el('b', {}, t), s ? el('span', {}, s) : ''), lk(q, tid)));
+    if (c.gf) gift(`a song from ${c.gf[3]}, the closest to you`, String(c.gf[0]), c.gf[1] ? String(c.gf[1]) : 'artist', [c.gf[0], c.gf[1]].filter(Boolean).join(' '), +c.gf[2] || 0);
+    if (c.nw) gift('new for you: nobody brought this one', String(c.nw[0]), `next door to ${c.nw[1]}`, String(c.nw[0]), 0);
+    bag.classList.toggle('hide', !bag.children.length);
     drawKeep(kp, c);
     if (first) setTimeout(() => { const f = $('#g-fin'); (f.classList.contains('hide') ? $('#g-keep') : f).scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80);
   }
@@ -3679,7 +3786,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120n');
+    const { openRoom } = await import('./sync.js?v=20261120q');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

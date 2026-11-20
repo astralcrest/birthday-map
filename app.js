@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120h';
-import * as Gr from './graph.js?v=20261120h';
-import { Player } from './audio.js?v=20261120h';
+import * as M from './music.js?v=20261120j';
+import * as Gr from './graph.js?v=20261120j';
+import { Player } from './audio.js?v=20261120j';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -192,13 +192,14 @@ function guestList() {
   return [...H.guests.values()].filter(g => g.picks && g.picks.length).sort((a, b) => (a.t || 0) - (b.t || 0));
 }
 const nameOf = k => { const g = H.guests.get(k); return g ? g.n : ''; };
-// the flagged guest shows as "the host" everywhere; unflagging gives the old name back
+// the flagged guest shows as "the birthday baby" everywhere; unflagging gives the old name back
+const HOSTN = 'the birthday baby';
 function setHost(k) {
   const old = H.hostKey && H.guests.get(H.hostKey);
   if (old && old.n0) { old.n = old.n0; delete old.n0; }
   H.hostKey = k;
   const g = k && H.guests.get(k);
-  if (g && g.n !== 'the host') { g.n0 = g.n; g.n = 'the host'; }
+  if (g && g.n !== HOSTN) { g.n0 = g.n; g.n = HOSTN; }
   H.gv++; saveSoon(); dataChanged(); renderBoard();
 }
 
@@ -209,7 +210,7 @@ function saveSoon() {
   clearTimeout(saveT);
   saveT = setTimeout(async () => {
     savedAt = Date.now();
-    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played, teams: H.teams, set: { n: SETN, pos: setPos, last: setLast } });
+    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played, teams: H.teams, set: { v: SETV, n: SETN, pos: setPos, last: setLast }, at: mode });
     lsSet('party.room.' + K.roomId, JSON.stringify(box));
     pushVault(box);
   }, 700);
@@ -220,12 +221,13 @@ function pushVault(box) {
   const v = { t: savedAt, box };
   if (JSON.stringify(v).length < 60000) NET.vault.set(v).catch(() => {});
 }
+const oldHost = g => { if (g && g.n === 'the host') g.n = HOSTN; return g; };
 async function adopt(v) {
   if (!v || !v.box || !(v.t > savedAt)) return;
   let d;
   try { d = await unseal(K.key, v.box); } catch (e) { return; }
   if (!(v.t > savedAt)) return;
-  for (const g of d.guests || []) if (g && g.k && !H.guests.has(g.k)) H.guests.set(g.k, g);
+  for (const g of d.guests || []) if (g && g.k && !H.guests.has(g.k)) H.guests.set(g.k, oldHost(g));
   H.scores = Object.assign({}, d.scores || {}, H.scores);
   for (const k in d.scores || {}) H.scores[k] = Math.max(H.scores[k] || 0, d.scores[k] || 0);
   if (!H.hostKey) H.hostKey = d.hostKey || null;
@@ -241,12 +243,15 @@ async function restore() {
   if (!raw) return;
   try {
     const d = await unseal(K.key, JSON.parse(raw));
-    for (const g of d.guests || []) H.guests.set(g.k, g);
+    for (const g of d.guests || []) H.guests.set(g.k, oldHost(g));
     H.scores = d.scores || {}; H.hostKey = d.hostKey || null; H.played = d.played || []; H.teams = d.teams || null;
     setRestore(d.set);
     savedAt = d.t || 1;
+    // a reload mid-game lands back on the same screen; the open round itself starts fresh
+    if (d.at && MODES[d.at] && Date.now() - savedAt < 30 * 60e3) resumeAt = d.at;
   } catch (e) { /* a different password wrote this: ignore */ }
 }
+let resumeAt = null;
 function upsertGuest(k, v, src) {
   if (!v || !v.n) return;
   let picks = (v.picks || []).map(cleanPick).filter(Boolean).slice(0, 3);
@@ -269,7 +274,7 @@ function upsertGuest(k, v, src) {
   // a phone that sends no picks never wipes the ones already on the map
   if (!picks.length && prev && prev.picks && prev.picks.length) picks = prev.picks;
   if (prev && prev.n.toLowerCase() === n.toLowerCase()) n = prev.n;
-  if (k === H.hostKey) n = 'the host';
+  if (k === H.hostKey) n = HOSTN;
   const taken = new Set([...H.guests.values()].filter(g => g.k !== k).map(g => g.n.toLowerCase()));
   if (taken.has(n.toLowerCase())) {
     if (prev && prev.n.toLowerCase().startsWith(n.toLowerCase() + ' ') && !taken.has(prev.n.toLowerCase())) n = prev.n;
@@ -472,7 +477,7 @@ function keepsakes() {
   } catch (e) { return null; }
 }
 function openRound(type, q, opts, truth) {
-  RD = { id: rid(), type, q, opts, open: true, votes: new Map(), vt: new Map(), res: null, t0: performance.now(), truth };
+  RD = { id: rid(), type, q, opts, open: true, votes: new Map(), vt: new Map(), res: null, t0: performance.now(), truth, s0: { ...H.scores } };
   publish();
   if (DEMO) fakeVotes(RD);
   renderBoard();
@@ -480,7 +485,7 @@ function openRound(type, q, opts, truth) {
 }
 function closeRound(res) {
   if (!RD) return;
-  RD.open = false; RD.res = res;
+  RD.open = false; RD.res = res; RD.tc = performance.now();
   publish(); renderBoard(); saveSoon();
 }
 function addPoints(keys, n = 1) {
@@ -536,7 +541,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120h').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120j').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -567,7 +572,7 @@ async function hostMain() {
   if (!DEMO && !guestList().length && !wide()) toggleJoin(true);
   const start = Q.get('mode');
   if (start && MODES[start]) enterMode(start);
-  else enterMode('cloud');
+  else enterMode(resumeAt || 'cloud');
 }
 
 // the TV must not sleep through a ten-minute jukebox
@@ -579,7 +584,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120h');
+    const { openRoom } = await import('./sync.js?v=20261120j');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -624,7 +629,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120h').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120j').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   people.slice(0, n).forEach(([name, specs], i) => {
@@ -634,6 +639,8 @@ async function loadDemo() {
     H.guests.set(k, { k, n: name, picks, gp: gs ? cleanPick(gs) : null, src: 'demo', t: i });
   });
   H.hostKey = 'demo-0';
+  const hg = H.guests.get('demo-0');
+  if (hg) { hg.n0 = hg.n; hg.n = HOSTN; }
   H.gv++;
 }
 
@@ -743,9 +750,12 @@ function drawCloud(c, t, dt, opts = {}) {
   c.font = `500 ${fs}px "Instrument Sans", system-ui, sans-serif`;
   c.textBaseline = 'middle';
   const xmax = opts.rect && !opts.poster ? freeBox().x1 : W - 4;
-  const boxes = P.map(([x, y]) => [x - 12, y - 12, 24, 24]);
+  // a name keeps clear of every dot and its rings, not just the dot
+  const ringR = i => opts.lit && opts.lit.has(list[i].k) ? 19 : opts.lit || opts.off ? 12 : i === f.center ? 27 : i === f.outlier || list[i].k === H.hostKey ? 17 : 12;
+  const boxes = P.map(([x, y], i) => { const r = ringR(i); return [x - r, y - r, r * 2, r * 2]; });
   const main = !opts.rect && !opts.poster && !opts.off && mode === 'cloud', flying = main && FLY.cur ? FLY.cur.k : null;
   const waiting = main && FLY.q.length ? new Set(FLY.q.map(f => f.k)) : null;
+  const jobs = [];
   list.forEach((g, i) => {
     const [x, y] = P[i];
     const dim = opts.lit && !opts.lit.has(g.k), tint = opts.tint ? opts.tint(g) : null;
@@ -770,37 +780,49 @@ function drawCloud(c, t, dt, opts = {}) {
       const a = t * .25 + k * 2.0944 + i;
       c.beginPath(); c.arc(x + Math.cos(a) * 12, y + Math.sin(a) * 12, 2, 0, 6.2832); c.fill();
     });
-    // label: try right, left, above, below
-    const label = opts.nameOf ? opts.nameOf(g) : g.n;
-    if (!label) { c.globalAlpha = 1; return; }
+    c.globalAlpha = 1;
+    const label = opts.nameOf ? opts.nameOf(g) : g.k === H.hostKey ? HOSTN : g.n;
+    if (!label) return;
+    // a dimmed name stays readable from the couch: grey, not faded
+    jobs.push({ g, i, x, y, label, col: dim ? COL.faint : tint || (opts.lit ? COL.mint : i === f.outlier ? COL.ice : i === f.center || g.k === H.hostKey ? COL.mint : playing ? COL.mint : COL.ink), pr: opts.lit && !dim ? 0 : g.k === H.hostKey || i === f.center ? 1 : 2 });
+  });
+  // names go on after every dot, the ones that matter first: right, left, above, below, then one step further out
+  jobs.sort((a, b) => a.pr - b.pr || a.i - b.i);
+  // a name over a dot still reads; a name over a name does not
+  const hit = b => { let o = 0; boxes.forEach((q, j) => { o += Math.max(0, Math.min(b[0] + b[2], q[0] + q[2]) - Math.max(b[0], q[0])) * Math.max(0, Math.min(b[1] + b[3], q[1] + q[3]) - Math.max(b[1], q[1])) * (j >= n ? 4 : 1); }); return o; };
+  const lk = opts.poster ? 'poster' : mode;
+  for (const { g, i, x, y, label, col } of jobs) {
     const w = c.measureText(label).width, h = fs;
     const gap = !opts.lit && !opts.off && (i === f.center || i === f.outlier || g.k === H.hostKey) ? 30 : 20;
-    const dg = gap * .75;
-    const cand = [[x + gap, y], [x - gap - w, y], [x - w / 2, y - gap - h / 2], [x - w / 2, y + gap + h / 2], [x + dg, y - dg - h / 2], [x + dg, y + dg + h / 2], [x - dg - w, y - dg - h / 2], [x - dg - w, y + dg + h / 2]];
-    let best = cand[0], bo = Infinity;
-    for (const cd of cand) {
-      const b = [cd[0], cd[1] - h / 2, w, h];
-      let o = 0;
-      for (const q of boxes) o += Math.max(0, Math.min(b[0] + b[2], q[0] + q[2]) - Math.max(b[0], q[0])) * Math.max(0, Math.min(b[1] + b[3], q[1] + q[3]) - Math.max(b[1], q[1]));
-      if (b[0] < 4 || b[0] + w > xmax) o += 1e6;
-      if (o < bo) { bo = o; best = cd; }
-      if (o === 0) break;
+    const cand = [];
+    for (const s of [1, 1.9, 2.8]) {
+      const gp = gap * s, dg = gp * .75;
+      cand.push([x + gp, y], [x - gp - w, y], [x - w / 2, y - gp - h / 2], [x - w / 2, y + gp + h / 2], [x + dg, y - dg - h / 2], [x + dg, y + dg + h / 2], [x - dg - w, y - dg - h / 2], [x - dg - w, y + dg + h / 2]);
     }
+    const raw = cd => { const b = [cd[0], cd[1] - h / 2, w, h]; return hit(b) + (b[0] < 4 || b[0] + w > xmax ? 1e6 : 0); };
+    // the spot it had last frame holds while it stays nearly clear, so names do not hop as the dots breathe
+    const was = LBC.get(g.k), wj = was && was[0] === lk ? was[1] : -1;
+    let bj = 0, bo = Infinity;
+    if (wj >= 0 && wj < cand.length && raw(cand[wj]) <= w * h * .1) bj = wj;
+    else for (let j = 0; j < cand.length; j++) { const o = raw(cand[j]) + (j >= 16 ? w * h * .2 : j >= 8 ? w * h * .08 : 0); if (o < bo) { bo = o; bj = j; } if (o === 0) break; }
+    LBC.set(g.k, [lk, bj]);
+    const best = cand[bj];
     boxes.push([best[0], best[1] - h / 2, w, h]);
     if (main) LBL.set(g.k, best);
-    if (g.k === flying || (waiting && waiting.has(g.k))) { c.globalAlpha = 1; return; }
-    // a dimmed name stays readable from the couch: grey, not faded
-    if (dim) c.globalAlpha = 1;
-    c.fillStyle = dim ? COL.faint : tint || (opts.lit ? COL.mint : i === f.outlier ? COL.ice : i === f.center || g.k === H.hostKey ? COL.mint : playing ? COL.mint : COL.ink);
+    if (g.k === flying || (waiting && waiting.has(g.k))) continue;
+    if (bj >= 8) {
+      const ex = clamp(x, best[0], best[0] + w), ey = clamp(y, best[1] - h / 2, best[1] + h / 2), d = Math.hypot(ex - x, ey - y);
+      if (d > 12) { c.strokeStyle = alpha(COL.ice, .45); c.lineWidth = 1; c.beginPath(); c.moveTo(x + (ex - x) * 9 / d, y + (ey - y) * 9 / d); c.lineTo(ex, ey); c.stroke(); }
+    }
+    c.fillStyle = col;
     c.textAlign = 'left';
     c.fillText(label, best[0], best[1]);
-    c.globalAlpha = 1;
-  });
+  }
   if (main) drawFly(c, t, P, R, fs);
   return P;
 }
 // a phone joins: its name flies onto the map and lands on its dot, with one soft note
-const FLY = { q: [], cur: null, n: 0 }, LBL = new Map();
+const FLY = { q: [], cur: null, n: 0 }, LBL = new Map(), LBC = new Map();
 function flyIn(k) { if (FLY.q.length < 8 && !FLY.q.some(f => f.k === k)) FLY.q.push({ k, at: performance.now() }); }
 function drawFly(c, t, P, R, fs1) {
   if (!FLY.cur) {
@@ -823,7 +845,7 @@ function drawFly(c, t, P, R, fs1) {
     if (ph <= 0 || ph >= 1) continue;
     c.globalAlpha = 1 - ph; c.beginPath(); c.arc(x, y, 10 + ph * 80, 0, 6.2832); c.stroke();
   }
-  const label = g.k === H.hostKey ? 'the host' : g.n, fs0 = Math.max(fs1 * 3, fontPx(84)), size = fs0 + (fs1 - fs0) * ease;
+  const label = g.k === H.hostKey ? HOSTN : g.n, fs0 = Math.max(fs1 * 3, fontPx(84)), size = fs0 + (fs1 - fs0) * ease;
   c.font = `600 ${fs0}px "Instrument Sans", system-ui, sans-serif`;
   const w0 = c.measureText(label).width;
   const sx = clamp(R.x + R.w / 2 - w0 / 2, 8, Math.max(8, W - w0 - 8)), sy = Math.min(Hh - fs0 * .7, R.y + R.h + fs0 * .2);
@@ -951,7 +973,9 @@ function walkLayout() {
     const md = $('#modes'), top = md.offsetTop + md.offsetHeight + 12, need = 83 + fontPx(20) * 1.5;
     let cy = Math.max(Hh * .45, top + R + need);
     if (cy + R + 90 > y) { R = Math.max(80, (y - 90 - top - need) / 2); cy = top + R + need; }
-    return { cx: (b.x0 + b.x1) / 2, cy, R, x0: p + 30, x1: tx1, y, amp: Hh * .025 };
+    // a long answer in the words column would sit on the first stop's label: the trail starts past the column instead
+    const cr = $('#col').getBoundingClientRect(), x0 = cr.height && cr.bottom > y - 30 - fontPx(19) * 1.4 ? Math.max(p + 30, Math.min(cr.right + 30, tx1 - 400)) : p + 30;
+    return { cx: (b.x0 + b.x1) / 2, cy, R, x0, x1: tx1, y, amp: Hh * .025 };
   }
   const R = clamp(Math.min(W * .3, Hh * .24), 70, 160);
   return { cx: W / 2, cy: Hh * .4, R, x0: 26, x1: W - 26, y: Hh * .86, amp: 10 };
@@ -1267,6 +1291,8 @@ function autoClose(rd, ms, fn) {
     if (el >= ms || (EARLY.has(rd.type) && el >= 10000 && allIn(rd))) { clearInterval(tick); fn(); }
   }, 250);
 }
+// the person behind the song gets a different nudge each round
+const WHY = ['tell us why.', 'defend this one.', 'the floor is yours.', 'what is the story?', 'when did this one find you?', 'one sentence on why.'];
 function songReveal() {
   if (!RD || RD.type !== 'who' || !RD.open) return;
   const { ans, item } = RD.truth;
@@ -1284,7 +1310,7 @@ function songReveal() {
   const wrong = new Map();
   for (const [k, v] of RD.votes) if (!ans.includes(v) && !ans.includes(k)) wrong.set(v, (wrong.get(v) || 0) + 1);
   const top = [...wrong.entries()].sort((a, b) => b[1] - a[1])[0];
-  const lines = [`${andList(names)}, tell us why.`];
+  const lines = [`${andList(names)}, ${WHY[(songRound - 1 + WHY.length) % WHY.length]}`];
   if (right.length) lines.push(`got it: ${andList(right.map(nameOf))}.`);
   if (top && top[1] >= 2 && nameOf(top[0])) lines.push(`${top[1]} of you said ${nameOf(top[0])}.`);
   setText('#k-right', lines.join('\n'));
@@ -2419,7 +2445,9 @@ function stopTour() {
 function drawList(c, t, dt) {
   easePositions(dt);
   const p = pad();
-  const R = wide() ? { x: p + 20, y: Hh * .24, w: (W - joinW()) * .4, h: Hh * .6 } : { x: 14, y: 14, w: W - 28, h: Hh - 28 };
+  // the map stops short of the track list, so no name runs into the numbers
+  const lx = wide() ? $('#p-list').getBoundingClientRect().left || W : W;
+  const R = wide() ? { x: p + 20, y: Hh * .24, w: Math.max(160, Math.min((W - joinW()) * .4, lx - p - 20 - 70)), h: Hh * .6 } : { x: 14, y: 14, w: W - 28, h: Hh - 28 };
   const ptsOf = it => {
     const g = H.guests.get(it.k); const q = pos.get(it.k) || [0, 0];
     const base = project(R, q);
@@ -2445,7 +2473,18 @@ function drawList(c, t, dt) {
     c.strokeStyle = COL.mint; c.lineWidth = 1.25; c.beginPath(); c.arc(q[0], q[1], 14 + lv * 24, 0, 6.2832); c.stroke();
   }
   c.font = `500 ${fontPx(15)}px "Instrument Sans", sans-serif`; c.fillStyle = COL.dim; c.textAlign = 'center'; c.textBaseline = 'top';
-  DV.list.forEach(g => { const b = project(R, pos.get(g.k) || [0, 0]); c.fillText(g.n, b[0], b[1] + 24); });
+  const fh = fontPx(15) * 1.2, taken = [];
+  DV.list.forEach(g => {
+    const b = project(R, pos.get(g.k) || [0, 0]), n = g.k === H.hostKey ? HOSTN : g.n, hw = c.measureText(n).width / 2;
+    const fit = x => wide() ? clamp(x, 4 + hw, lx - 16 - hw) : x;
+    // below the dot unless a name is already there: then above, right, left
+    const cand = [[b[0], b[1] + 24], [b[0], b[1] - 24 - fh], [b[0] + 24 + hw, b[1] - fh / 2], [b[0] - 24 - hw, b[1] - fh / 2]].map(([x, y]) => [fit(x), y]);
+    const ov = ([x, y]) => taken.reduce((o, q) => o + Math.max(0, Math.min(x + hw, q[0] + q[2]) - Math.max(x - hw, q[0])) * Math.max(0, Math.min(y + fh, q[1] + q[3]) - Math.max(y, q[1])), 0);
+    let best = cand[0], bo = Infinity;
+    for (const cd of cand) { const o = ov(cd); if (o < bo) { bo = o; best = cd; } if (!o) break; }
+    taken.push([best[0] - hw, best[1], hw * 2, fh]);
+    c.fillText(n, best[0], best[1]);
+  });
 }
 
 // ---------- modes ----------
@@ -2643,18 +2682,21 @@ const GO = { walk: () => { ++walkLoopTok; walkLoop(); }, song: () => RD && RD.ty
   list: () => tourTok && tourIdx >= 0 ? stopTour() : playTour(0),
   cloud: () => { if (!player.ready) return; if (cloudNow) { cloudTok++; cloudNow = null; player.stop(); setText('#cloud-now', 'paused. space plays.'); } else cloudShuffle(); },
 };
-// about 35 minutes: warm up, change rhythm, play together, then the ceremony
+// about 35 minutes, the order on the night's card: warm up, change rhythm, sing, then the ceremony
 const SET = [
   { m: 'song', n: 8, l: 'whose song' }, { m: 'odd', n: 3, l: 'odd one out' }, { m: 'steer', n: 1, l: 'steer' },
-  { m: 'twin', n: 1, l: 'taste twin' }, { m: 'hops', n: 2, l: 'how many hops' }, { m: 'song', n: 12, l: 'whose song, the finals' },
+  { m: 'twin', n: 1, l: 'taste twin' }, { m: 'hops', n: 2, l: 'how many hops' }, { m: 'sing', n: 1, l: 'the singalong' },
   { m: 'awards', n: 1, l: 'the awards' }, { m: 'bday', n: 1, l: 'the birthday round' }, { m: 'toast', n: 1, l: 'the toast' },
   { m: 'photo', n: 1, l: 'the photo' }, { m: 'list', n: 1, l: 'the playlist, to close' },
 ];
 const SETKEY = { song: '3', odd: '9', steer: '7', twin: '8', hops: '6', bday: '0', awards: 'a', toast: 't', photo: 'p', list: '5', sing: 's' };
-// each round counts toward one part of the set, so the finals start from zero
-const SETN = SET.map(() => 0);
+// each round counts toward one part of the set
+const SETN = SET.map(() => 0), SETV = 2;
 let setPos = 0, setLast = -1;
 function tallySet(m, how) {
+  // jumping ahead on the card moves the hint along with you, so it never points back
+  const ahead = how === 'enter' ? SET.findIndex((x, j) => j > setPos && x.m === m) : -1;
+  if (ahead > setPos) { setPos = ahead; if (savedAt) saveSoon(); }
   if (how === 'round' || ['awards', 'toast', 'photo', 'list'].includes(m)) {
     let i = setLast >= 0 && SET[setLast].m === m ? setLast : SET.findIndex((x, j) => j >= setPos && x.m === m);
     if (i < 0) i = SET.map(x => x.m).lastIndexOf(m);
@@ -2668,7 +2710,7 @@ function tallySet(m, how) {
   nextUp();
 }
 function setRestore(s) {
-  if (!s || !Array.isArray(s.n) || s.n.length !== SET.length) return;
+  if (!s || s.v !== SETV || !Array.isArray(s.n) || s.n.length !== SET.length) return;
   s.n.forEach((v, i) => { SETN[i] = Math.max(0, v | 0); });
   setPos = clamp(s.pos | 0, 0, SET.length); setLast = clamp(s.last | 0, -1, SET.length - 1);
 }
@@ -2677,7 +2719,13 @@ function nextUp() {
   if (!b) return;
   while (setPos < SET.length && SETN[setPos] >= SET[setPos].n) setPos++;
   const nx = SET[setPos];
-  if (!nx) { b.textContent = 'that was the night. 1 for the cloud.'; b.dataset.m = 'cloud'; return; }
+  if (!nx) {
+    // the card is done: replays are an encore, not a loop back to the end
+    const enc = SETKEY[mode] && !['list', 'photo', 'toast', 'awards'].includes(mode);
+    b.dataset.m = enc ? mode : mode === 'cloud' ? 'song' : 'cloud';
+    b.textContent = enc ? `encore: ${MODES[mode].title} · space` : mode === 'cloud' ? 'that was the night. 3 for an encore.' : 'that was the night. 1 for the cloud.';
+    return;
+  }
   const more = nx.n - SETN[setPos];
   b.dataset.m = nx.m;
   b.textContent = nx.m === mode
@@ -2712,6 +2760,7 @@ function enterMode(m, keepAudio) {
   if (m === 'toast') { ++TS.tok; toastEnter(); }
   if (m === 'photo') photoEnter();
   tallySet(m, 'enter');
+  if (changed && savedAt) saveSoon();
   $('#more-btn').setAttribute('aria-current', String(NEWM.has(m)));
   if (JUKE.has(m) && player && player.ready) cloudShuffle();
   if (m === 'cloud' && player && !player.ready) setText('#cloud-now', '');
@@ -2757,7 +2806,9 @@ function renderBoard() {
   }
   const rows = Object.entries(H.scores).filter(([k]) => H.guests.has(k)).sort((a, b) => b[1] - a[1]);
   if (!rows.length) { ol.append(el('li', { class: 'more' }, el('span', {}, 'no points yet'))); return; }
-  rows.slice(0, 6).forEach(([k, v], i) => ol.append(el('li', { class: v === rows[0][1] && i < 3 ? 'lead' : '', title: 'click: +1 · shift-click: -1', onclick: e => handPoint(k, e.shiftKey ? -1 : 1) }, el('span', {}, nameOf(k)), el('span', {}, String(v)))));
+  // once a round is revealed, whoever just scored wears a small +n beside their total
+  const up = k => RD && !RD.open && RD.s0 ? (H.scores[k] || 0) - (RD.s0[k] || 0) : 0;
+  rows.slice(0, 6).forEach(([k, v], i) => ol.append(el('li', { class: v === rows[0][1] && i < 3 ? 'lead' : '', title: 'click: +1 · shift-click: -1', onclick: e => handPoint(k, e.shiftKey ? -1 : 1) }, el('span', {}, nameOf(k)), el('span', {}, up(k) > 0 ? el('i', { class: 'up' + (performance.now() - (RD.tc || 0) > 1500 ? ' still' : '') }, '+' + up(k)) : null, String(v)))));
   if (rows.length > 6) ol.append(el('li', { class: 'more' }, el('span', {}, `and ${rows.length - 6} more`)));
 }
 // no phones tonight: the host gives points with a click
@@ -3184,7 +3235,7 @@ async function bulkRead(text) {
   BK.people = parseBulk(text).map(p => ({ n: p.n, host: HOSTNAME.test(p.n), loose: p.loose, items: p.items.filter(it => it.s === 'gp' || it.s === undefined || it.s < 3).map(it => ({ ...it, pick: null, done: false })) }));
   const seenN = {};
   for (const p of BK.people) {
-    if (p.host) p.n = 'the host';
+    if (p.host) p.n = HOSTN;
     // two people called sam stay two people
     const low = p.n.toLowerCase();
     seenN[low] = (seenN[low] || 0) + 1;
@@ -3547,6 +3598,8 @@ async function guestMain() {
     if (voted[r.id] !== undefined) return;
     voted[r.id] = v;
     if (NETg) NETg.vote.set({ r: r.id, v }).catch(() => {});
+    // a small tick under the thumb where the phone offers one; silent everywhere else
+    try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.isActive)) navigator.vibrate(12); } catch (e) { /* no haptics */ }
     render();
   }
 
@@ -3562,7 +3615,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120h');
+    const { openRoom } = await import('./sync.js?v=20261120j');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

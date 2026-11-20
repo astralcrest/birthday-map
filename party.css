@@ -125,6 +125,10 @@ select { font: 500 13px/1.2 var(--mono); border: 1px solid var(--line); border-r
 #board-ol li span:last-child { color: var(--mint); }
 #board-ol li.more { color: var(--faint); border: 0; }
 #board-ol li.team { font-weight: 600; color: var(--mint); }
+#board-ol li .up { font: 500 max(12px, .6em)/1 var(--mono); color: var(--mint); margin-right: .8em; display: inline-block; vertical-align: .15em; animation: up .45s ease-out both; }
+#board-ol li .up.still { animation: none; }
+@keyframes up { from { transform: translateY(.6em); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #board-ol li .up { animation: none; } }
 #board-ol li.team.t1 { color: var(--rose); }
 #board-ol li.team span:last-child { color: inherit; }
 #team-merge { margin-top: 12px; }
@@ -141,6 +145,9 @@ select { font: 500 13px/1.2 var(--mono); border: 1px solid var(--line); border-r
 #photo-ol li.more { border: 0; } #photo-ol li.more b { color: var(--faint); font-weight: 500; }
 #host[data-mode=photo] #p-cloud .facts { grid-template-columns: repeat(3, auto); justify-content: start; }
 #host[data-mode=photo] #p-cloud .fact .k { white-space: nowrap; }
+@media (min-width: 861px) { #host[data-mode=cloud] #p-cloud .facts { grid-template-columns: repeat(3, auto); justify-content: start; } #host[data-mode=cloud] #p-cloud .fact .k { white-space: nowrap; } }
+/* a laptop-wide screen keeps the six games on one row */
+@media (min-width: 1360px) and (max-width: 1700px) { #host:not(.joined) #modes { max-width: 820px; } }
 #p-pairs .facts { grid-template-columns: 1fr; gap: 18px; margin-bottom: 22px; }
 #pairs-hover { min-height: 1.5em; }
 
@@ -264,6 +271,8 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 #guest .pill.small { min-height: 44px; }
 #guest .tl { font-size: 12px; }
 #guest .slot .chip button { width: 44px; height: 44px; }
+#guest .eyebrow, #guest .slot-l { font-size: 12px; }
+#guest .res .kd { font-size: 12px; letter-spacing: .04em; }
 #guest h1 { font-size: clamp(30px, 8vw, 44px); line-height: 1.02; letter-spacing: -.035em; margin: 8px 0 24px; }
 #guest h2 { font-size: 26px; line-height: 1.1; letter-spacing: -.02em; margin: 22px 0 14px; }
 .field { display: block; margin-bottom: 18px; }

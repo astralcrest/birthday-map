@@ -9,9 +9,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css?v=20261120c">
+<link rel="stylesheet" href="party.css?v=20261120h">
 </head>
 <body>
+<a id="boot-slow" href="">still loading. if nothing shows up, tap here to try again.</a>
 
 <main id="gate" class="hide">
   <div class="gate-in">
@@ -91,6 +92,11 @@
     <button class="pill small hide" id="team-merge" type="button">merge teams</button>
   </aside>
 
+  <aside id="p-photo" class="panel empty" aria-label="who brought what">
+    <h3>who brought what</h3>
+    <ol id="photo-ol"></ol>
+  </aside>
+
   <section id="p-pairs" class="panel">
     <div class="facts" id="pairs-facts"></div>
     <p class="fine">score = 100 &times; (1 &minus; average hops to the other person&rsquo;s nearest pick &divide; 7). hops come from deezer&rsquo;s related-artist lists. a toy, not a measurement.</p>
@@ -111,7 +117,18 @@
     <div class="qr-wrap"><canvas id="qr2" width="10" height="10"></canvas></div>
     <p class="big">scan to join</p>
     <p class="code" id="lobby-code"></p>
-    <p class="how">host: j opens the guest list</p>
+    <p class="how">host: g opens the guest list · j brings this code back any time</p>
+  </div>
+
+  <div id="bigjoin" class="hide" role="dialog" aria-label="scan to join">
+    <div class="bj-qr"><canvas id="qr3" width="10" height="10" aria-label="join code"></canvas></div>
+    <div class="bj-t">
+      <p class="bj-big">scan to join</p>
+      <p class="bj-url" id="bj-url"></p>
+      <p class="bj-code" id="bj-code"></p>
+      <p class="bj-n" id="bj-n"></p>
+      <p class="bj-how">any key closes · <button type="button" class="pill small" id="bj-list">guest list (g)</button></p>
+    </div>
   </div>
 
   <aside id="join" class="hide" aria-label="join">
@@ -140,7 +157,7 @@
   <footer id="foot">
     <span id="foot-stats"></span>
     <button id="next-up" type="button" class="nx"></button>
-    <span class="keys">space go &middot; n next &middot; j join &middot; k save the poster &middot; f full screen</span>
+    <span class="keys">space go &middot; n next &middot; j join code &middot; g guests &middot; shift+k poster &middot; f full screen</span>
   </footer>
 
   <div id="sound" class="hide">
@@ -164,6 +181,7 @@
       <p class="field-h">not there? type it.</p>
     </div>
     <label class="field"><span>your name</span><input id="g-name" type="text" maxlength="24" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="first name is plenty"></label>
+    <p class="note warn" id="g-dup" aria-live="polite"></p>
     <p class="field-h">up to three picks: a song, an artist or a link. none is fine too.</p>
     <div id="g-picks" class="picker"></div>
     <div id="g-gp" class="picker gp"></div>
@@ -178,6 +196,13 @@
     <p class="g-bigcode hide" id="g-bigcode"></p>
     <div class="row g-fix hide" id="g-fix"><button class="pill small" id="g-retype" type="button">retype the password</button><button class="pill small" id="g-reload" type="button">reload</button></div>
     <p class="g-team" id="g-team"></p>
+    <section id="g-keep" class="g-keep hide" aria-label="your keepsake">
+      <p class="field-h">a keepsake from tonight</p>
+      <h2 id="gk-name"></h2>
+      <canvas id="gk-map" aria-hidden="true"></canvas>
+      <ul id="gk-facts" class="mine"></ul>
+      <p class="note">screenshot it to keep it.</p>
+    </section>
     <div id="g-ask" class="hide">
       <h2 id="g-ask-q"></h2>
       <div id="g-ask-pick" class="picker"></div>
@@ -226,6 +251,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=20261120c"></script>
+<script type="module" src="app.js?v=20261120h"></script>
 </body>
 </html>

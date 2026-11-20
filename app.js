@@ -1,7 +1,8 @@
-import * as M from './music.js?v=20261120c';
-import * as Gr from './graph.js?v=20261120c';
-import { Player } from './audio.js?v=20261120c';
+import * as M from './music.js?v=20261120h';
+import * as Gr from './graph.js?v=20261120h';
+import { Player } from './audio.js?v=20261120h';
 import qrcode from './vendor/qrcode.mjs';
+document.documentElement.classList.add('booted');
 
 // ---------- small things ----------
 const $ = s => document.querySelector(s);
@@ -114,7 +115,7 @@ function picker(root, { max = 3, onChange = () => {}, labels = null, q0 = '' } =
           el('button', { type: 'button', 'aria-label': 'remove', onclick: () => { picks[i] = null; render(); onChange(); } }, '×')));
       } else if (labels || !shownEmpty) {
         shownEmpty = true;
-        const inp = el('input', { type: 'text', placeholder: labels ? labels[i].h : i === 0 ? 'an artist, a song, or a link' : 'another one (optional)', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'search', 'aria-label': `pick ${i + 1}` });
+        const inp = el('input', { type: 'text', placeholder: labels ? labels[i].h : i === 0 ? 'artist, song or link' : 'another one (optional)', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'search', 'aria-label': `pick ${i + 1}` });
         // keep the results above the phone keyboard
         inp.addEventListener('focus', () => { if (innerWidth < 700) { document.body.classList.add('typing'); setTimeout(() => slot.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); } });
         inp.addEventListener('blur', () => setTimeout(() => { if (!document.activeElement || document.activeElement.tagName !== 'INPUT') document.body.classList.remove('typing'); }, 200));
@@ -132,11 +133,12 @@ function picker(root, { max = 3, onChange = () => {}, labels = null, q0 = '' } =
             else if (r && r.query) { note = `from your ${r.from} link: ${r.query}`; list = await M.search(r.query); if (r.kind === 'track') list.sort((a, b) => (b.k === 't') - (a.k === 't')); }
             else note = 'could not read that link. try typing the name.';
           } else {
-            const qx = expand(q);
+            const qx = expand(q), f0 = M.stats.fails;
             const m = /^(.+?)\s+(?:-|–|—|by)\s+(.+)$/i.exec(qx);
             const [l, sg] = await Promise.all([M.search(qx), m ? M.findSong(m[1], m[2]).then(r => r && r.how === 'song' ? r : M.findSong(m[2], m[1])) : null]);
             list = sg && sg.how === 'song' ? [sg.pick, ...l.filter(x => !(x.k === 't' && x.tid === sg.pick.tid))] : l;
             if (!list.length && M.stats.busy && Date.now() - M.stats.busy < 8000) note = 'the music service is busy. trying again…';
+            else if (!list.length && M.stats.fails > f0) note = 'the music search is not answering. check the wifi and try again. you can still play along without picks.';
             if (note) { await new Promise(r => setTimeout(r, 2500)); if (inp.value.trim() === q) { list = await M.search(qx); if (list.length) note = ''; } }
           }
           if (inp.value.trim() !== q) return;
@@ -207,7 +209,7 @@ function saveSoon() {
   clearTimeout(saveT);
   saveT = setTimeout(async () => {
     savedAt = Date.now();
-    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played, teams: H.teams });
+    const box = await seal(K.key, { t: savedAt, guests: [...H.guests.values()], scores: H.scores, hostKey: H.hostKey, played: H.played, teams: H.teams, set: { n: SETN, pos: setPos, last: setLast } });
     lsSet('party.room.' + K.roomId, JSON.stringify(box));
     pushVault(box);
   }, 700);
@@ -229,6 +231,7 @@ async function adopt(v) {
   if (!H.hostKey) H.hostKey = d.hostKey || null;
   if (!H.played.length) H.played = d.played || [];
   if (!H.teams && d.teams) H.teams = d.teams;
+  if (!SETN.some(Boolean)) { setRestore(d.set); nextUp(); }
   H.gv++;
   setText('#join-msg', `picked the room back up from a phone. ${guestList().length} people.`);
   saveSoon(); dataChanged(); renderBoard(); publish();
@@ -240,6 +243,7 @@ async function restore() {
     const d = await unseal(K.key, JSON.parse(raw));
     for (const g of d.guests || []) H.guests.set(g.k, g);
     H.scores = d.scores || {}; H.hostKey = d.hostKey || null; H.played = d.played || []; H.teams = d.teams || null;
+    setRestore(d.set);
     savedAt = d.t || 1;
   } catch (e) { /* a different password wrote this: ignore */ }
 }
@@ -248,7 +252,8 @@ function upsertGuest(k, v, src) {
   let picks = (v.picks || []).map(cleanPick).filter(Boolean).slice(0, 3);
   let prev = H.guests.get(k);
   let n = String(v.n).slice(0, 24).trim() || 'guest';
-  if (src === 'p2p' && (!prev || prev.src !== 'p2p')) {
+  const fresh = src === 'p2p' && (!prev || prev.src !== 'p2p');
+  if (fresh) {
     // someone from the pasted list picking up their phone is the same person, not a second dot
     const low = n.toLowerCase();
     const c = (v.claim && H.guests.get(v.claim)) || [...H.guests.values()].find(g => g.src === 'hand' && g.k !== H.hostKey && g.n.toLowerCase() === low);
@@ -272,7 +277,21 @@ function upsertGuest(k, v, src) {
   }
   H.guests.set(k, { k, n, picks, gp: v.gp ? cleanPick(v.gp) : prev ? prev.gp || null : null, src, t: prev ? prev.t : Date.now() });
   H.gv++;
+  if (fresh) {
+    JOINS.push({ k, n, t: performance.now() }); joinCalm();
+    if (picks.length) flyIn(k);
+    if (!$('#bigjoin').classList.contains('hide')) chime(JOINS.length);
+  }
   saveSoon(); dataChanged();
+  bigJoinText();
+}
+// while phones are arriving, the screen and the background lookups go easy
+const JOINS = [];
+let calmUntil = 0;
+function joinCalm() { calmUntil = performance.now() + 30000; M.calm(30000); }
+function frameGap() {
+  if (!$('#bigjoin').classList.contains('hide')) return 250;
+  return performance.now() < calmUntil && mode === 'cloud' ? 33 : 0;
 }
 
 // ---- derived numbers ----
@@ -420,9 +439,37 @@ function publish() {
       round: RD ? { id: RD.id, type: RD.type, open: RD.open, q: RD.q, opts: RD.opts || null, res: RD.res || null } : null,
       ask: RD && RD.open && RD.ask ? RD.ask : null,
       teams: H.teams ? { n: H.teams.n, m: teamMap(), tot: teamTotals() } : null,
+      keep: keepsakes(),
     };
     NET.show.set(s).catch(() => {});
   }, 120);
+}
+// end of the night: every phone gets its own card. anything missing is left off the card
+const KEEPM = new Set(['toast', 'photo', 'list']);
+function keepsakes() {
+  try {
+    if (!(KEEPM.has(mode) || (mode === 'bday' && BD.final))) return null;
+    const L = DV.list, f = DV.facts || {}, hi = DV.idx.has(H.hostKey) ? DV.idx.get(H.hostKey) : -1;
+    const rows = BD.rows && BD.rows.length ? BD.rows : BDP.rows || [];
+    const hops = new Map(rows.map(r => [r.g.k, r.hops]));
+    const pts = Object.values(H.scores).filter(v => v > 0);
+    const xy = L.map(g => (pos.get(g.k) || [0, 0]).map(v => Math.round(v * 1000) / 1000));
+    const c = {};
+    for (const g of H.guests.values()) {
+      if (g.src !== 'p2p') continue;
+      const i = DV.idx.has(g.k) ? DV.idx.get(g.k) : -1, pt = H.scores[g.k] || 0;
+      const o = { n: g.k === H.hostKey ? 'the birthday baby' : g.n, i, pt, rk: pt > 0 ? 1 + pts.filter(v => v > pt).length : 0 };
+      if (g.k === H.hostKey) { const reach = rows.filter(r => r.hops != null).length; if (reach) o.home = reach; }
+      else {
+        if (i >= 0 && L.length >= 3) { const tj = twinsOf(i).slice(0, 2); if (tj.length) { o.tj = tj; o.tw = andList(tj.map(j => L[j].k === H.hostKey ? 'the birthday baby' : L[j].n)); } }
+        if (hops.get(g.k) != null) o.hp = hops.get(g.k);
+        if (i >= 0 && i === f.center) o.sp = 'the middle of the room';
+        else if (i >= 0 && i === f.outlier) o.sp = 'the wildcard';
+      }
+      c[g.k] = o;
+    }
+    return { xy, h: hi, c };
+  } catch (e) { return null; }
 }
 function openRound(type, q, opts, truth) {
   RD = { id: rid(), type, q, opts, open: true, votes: new Map(), vt: new Map(), res: null, t0: performance.now(), truth };
@@ -484,12 +531,12 @@ async function hostMain() {
   setText('#room-tag', DEMO ? 'demo' : 'room ' + K.code);
   player = new Player();
   player.levelOf = M.gainOf;
-  window.__party = { player, H, DV, save: saveSoon, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, get BDP() { return BDP; }, get AW() { return AW; }, get X() { return { NT, MT, BR, DC, TM }; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
+  window.__party = { player, H, DV, save: saveSoon, M, Gr, get mode() { return mode; }, get RD() { return RD; }, get WK() { return WK; }, get OD() { return OD; }, get ST() { return ST; }, get BD() { return BD; }, get BDP() { return BDP; }, get AW() { return AW; }, get FLY() { return FLY; }, get X() { return { NT, MT, BR, DC, TM }; }, enterMode: m => enterMode(m), go: () => GO[mode] && GO[mode](), savePoster: () => savePoster() };
   if (DEMO) await loadDemo();
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120c').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120h').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -532,7 +579,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120c');
+    const { openRoom } = await import('./sync.js?v=20261120h');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -577,7 +624,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120c').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120h').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   people.slice(0, n).forEach(([name, specs], i) => {
@@ -609,7 +656,7 @@ function setupStage() {
   fit();
   // the points panel sits under the mode buttons however many rows they wrap to
   const md = $('#modes'), bd = $('#board');
-  if (md && bd) new ResizeObserver(() => { bd.style.top = innerWidth > 860 ? (md.offsetTop + md.offsetHeight + 16) + 'px' : ''; }).observe(md);
+  if (md && bd) new ResizeObserver(() => { for (const e of [bd, $('#p-photo'), $('#p-list')]) e.style.top = innerWidth > 860 ? (md.offsetTop + md.offsetHeight + 16) + 'px' : ''; }).observe(md);
   buildGrid();
   c.addEventListener('mousemove', onStageMove);
   c.addEventListener('mouseleave', () => setText('#pairs-hover', ''));
@@ -628,6 +675,8 @@ function fontPx(base) { return Math.round(clamp(base * Math.min(W / 1920, Hh / 1
 let lastT = 0;
 function frame(t) {
   requestAnimationFrame(frame);
+  const gap = frameGap();
+  if (gap && t - lastT < gap - 4) return;
   const dt = Math.min(64, t - lastT) / 1000; lastT = t;
   if (document.hidden || !W) return;
   recompute();
@@ -695,10 +744,12 @@ function drawCloud(c, t, dt, opts = {}) {
   c.textBaseline = 'middle';
   const xmax = opts.rect && !opts.poster ? freeBox().x1 : W - 4;
   const boxes = P.map(([x, y]) => [x - 12, y - 12, 24, 24]);
+  const main = !opts.rect && !opts.poster && !opts.off && mode === 'cloud', flying = main && FLY.cur ? FLY.cur.k : null;
+  const waiting = main && FLY.q.length ? new Set(FLY.q.map(f => f.k)) : null;
   list.forEach((g, i) => {
     const [x, y] = P[i];
-    const playing = cloudNow && cloudNow.k === g.k && songRound > 0;
     const dim = opts.lit && !opts.lit.has(g.k), tint = opts.tint ? opts.tint(g) : null;
+    const playing = cloudNow && cloudNow.k === g.k && songRound > 0 && !dim;
     c.globalAlpha = dim ? .3 : 1;
     if (opts.lit && !dim) { c.strokeStyle = COL.mint; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 16 + Math.sin(t * 2) * 1.5, 0, 6.2832); c.stroke(); }
     if (opts.lit || opts.off) { /* no rings on a focused map */ } else if (i === f.center) {
@@ -736,12 +787,73 @@ function drawCloud(c, t, dt, opts = {}) {
       if (o === 0) break;
     }
     boxes.push([best[0], best[1] - h / 2, w, h]);
-    c.fillStyle = tint || (opts.lit ? COL.mint : i === f.outlier ? COL.ice : i === f.center || g.k === H.hostKey ? COL.mint : playing ? COL.mint : COL.ink);
+    if (main) LBL.set(g.k, best);
+    if (g.k === flying || (waiting && waiting.has(g.k))) { c.globalAlpha = 1; return; }
+    // a dimmed name stays readable from the couch: grey, not faded
+    if (dim) c.globalAlpha = 1;
+    c.fillStyle = dim ? COL.faint : tint || (opts.lit ? COL.mint : i === f.outlier ? COL.ice : i === f.center || g.k === H.hostKey ? COL.mint : playing ? COL.mint : COL.ink);
     c.textAlign = 'left';
     c.fillText(label, best[0], best[1]);
     c.globalAlpha = 1;
   });
+  if (main) drawFly(c, t, P, R, fs);
   return P;
+}
+// a phone joins: its name flies onto the map and lands on its dot, with one soft note
+const FLY = { q: [], cur: null, n: 0 }, LBL = new Map();
+function flyIn(k) { if (FLY.q.length < 8 && !FLY.q.some(f => f.k === k)) FLY.q.push({ k, at: performance.now() }); }
+function drawFly(c, t, P, R, fs1) {
+  if (!FLY.cur) {
+    if (!FLY.q.length || !$('#bigjoin').classList.contains('hide') || !$('#lobby').classList.contains('hide')) return;
+    const now = performance.now();
+    FLY.q = FLY.q.filter(f => now - f.at < 20000);
+    // wait until the new dot has drifted to its place, so the name lands where it will stay
+    const nx = FLY.q.find(f => { const i = DV.idx.get(f.k), p = pos.get(f.k), q = DV.xy[i]; return i != null && p && q && LBL.has(f.k) && Math.hypot(p[0] - q[0], p[1] - q[1]) < .04; });
+    if (!nx) return;
+    FLY.q.splice(FLY.q.indexOf(nx), 1);
+    FLY.cur = { k: nx.k, t0: t, sp: FLY.q.length ? .6 : 1, rang: false };
+  }
+  const f = FLY.cur, i = DV.idx.get(f.k), g = H.guests.get(f.k), lb = LBL.get(f.k), e = (t - f.t0) / f.sp;
+  if (i == null || !P[i] || !g || !lb || e > 4.4 || e < 0) { FLY.cur = null; return; }
+  const [x, y] = P[i], u = clamp((e - .5) / 1.2, 0, 1), ease = u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+  if (u >= 1 && !f.rang) { f.rang = true; chime(FLY.n++); }
+  c.strokeStyle = COL.mint; c.lineWidth = 1.5;
+  for (let k = 0; k < 2; k++) {
+    const ph = (e - 1.7 - k * .4) / 1.4;
+    if (ph <= 0 || ph >= 1) continue;
+    c.globalAlpha = 1 - ph; c.beginPath(); c.arc(x, y, 10 + ph * 80, 0, 6.2832); c.stroke();
+  }
+  const label = g.k === H.hostKey ? 'the host' : g.n, fs0 = Math.max(fs1 * 3, fontPx(84)), size = fs0 + (fs1 - fs0) * ease;
+  c.font = `600 ${fs0}px "Instrument Sans", system-ui, sans-serif`;
+  const w0 = c.measureText(label).width;
+  const sx = clamp(R.x + R.w / 2 - w0 / 2, 8, Math.max(8, W - w0 - 8)), sy = Math.min(Hh - fs0 * .7, R.y + R.h + fs0 * .2);
+  const lx = sx + (lb[0] - sx) * ease, ly = sy + (lb[1] - sy) * ease;
+  c.globalAlpha = clamp(e / .25, 0, 1);
+  c.font = `${u < 1 ? 600 : 500} ${size}px "Instrument Sans", system-ui, sans-serif`;
+  c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = COL.mint;
+  c.fillText(label, lx, ly);
+  const p = g.picks.find(q => q.s === 0) || g.picks[0];
+  if (p && e > 1.8) {
+    c.globalAlpha = clamp((e - 1.8) / .3, 0, 1) * clamp((4.4 - e) / .5, 0, 1);
+    c.font = `400 ${fontPx(18)}px "IBM Plex Mono", ui-monospace, monospace`;
+    c.fillStyle = COL.dim;
+    const sub = 'brought ' + (p.k === 't' ? p.tt : p.an), sw = c.measureText(sub).width;
+    c.fillText(sub, clamp(lb[0], 8, Math.max(8, W - sw - 8)), lb[1] + fs1 * .95);
+  }
+  c.globalAlpha = 1;
+}
+// D minor pentatonic, one note per arrival, quiet under whatever is playing
+const CHIME = [587.33, 698.46, 783.99, 880, 1046.5];
+let chimeAt = 0;
+function chime(n) {
+  if (!player || !player.ready || player.muted || performance.now() - chimeAt < 350) return;
+  chimeAt = performance.now();
+  try {
+    const x = player.ctx, t = x.currentTime, o = x.createOscillator(), g = x.createGain();
+    o.type = 'sine'; o.frequency.value = CHIME[n % CHIME.length];
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.07, t + .012); g.gain.exponentialRampToValueAtTime(.0004, t + 1.4);
+    o.connect(g); g.connect(player.master); o.start(t); o.stop(t + 1.5);
+  } catch (e) { /* no note, no harm */ }
 }
 function curve(c, a, b, bow) {
   const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
@@ -829,8 +941,17 @@ function walkLayout() {
   const p = pad(), jw = joinW();
   if (wide()) {
     // option names hang about 170px outside the ring, so the ring stays clear of the points list
-    const b = freeBox(), R = clamp(Math.min(Hh * .25, (b.x1 - b.x0) / 2 - 170), 120, 300);
-    return { cx: (b.x0 + b.x1) / 2, cy: Hh * .45, R, x0: p + 30, x1: W - jw - p - 30, y: Hh * .86, amp: Hh * .025 };
+    // on short screens the footer wraps to two lines and the board runs long: the trail stays clear of both
+    const fr = $('#foot').getBoundingClientRect(), ft = fr.height ? fr.top : Hh, bd = $('#board'), bb = bd.offsetHeight ? bd.getBoundingClientRect() : null;
+    const b = freeBox(), y = Math.min(Hh * .86, ft - 50 - Hh * .025);
+    let tx1 = W - jw - p - 30;
+    if (bb && bb.bottom > y - 50) tx1 = Math.min(tx1, bb.left - 40);
+    let R = clamp(Math.min(Hh * .25, (b.x1 - b.x0) / 2 - 170), 120, 300);
+    // the steer names above the ring stay under the mode buttons, which wrap to four rows on small screens
+    const md = $('#modes'), top = md.offsetTop + md.offsetHeight + 12, need = 83 + fontPx(20) * 1.5;
+    let cy = Math.max(Hh * .45, top + R + need);
+    if (cy + R + 90 > y) { R = Math.max(80, (y - 90 - top - need) / 2); cy = top + R + need; }
+    return { cx: (b.x0 + b.x1) / 2, cy, R, x0: p + 30, x1: tx1, y, amp: Hh * .025 };
   }
   const R = clamp(Math.min(W * .3, Hh * .24), 70, 160);
   return { cx: W / 2, cy: Hh * .4, R, x0: 26, x1: W - 26, y: Hh * .86, amp: 10 };
@@ -869,21 +990,22 @@ function drawPortrait(c, L, aid, t) {
   const nb = [...Gr.nbrs(aid)].slice(0, 28);
   const next = WK.stops[WK.i + 1];
   const R3 = R + 70;
-  const optOf = new Map((WK.opts || []).map(o => [o.v, o]));
-  for (const o of WK.opts || []) if (!nb.includes(o.v)) nb.push(o.v);
-  nb.forEach((v, k) => {
-    const a = k / nb.length * 6.2832 - Math.PI / 2 + .2;
-    const o = optOf.get(v);
-    const x = o ? Math.min(W - 18, Math.max(18, cx + Math.cos(a) * R3)) : cx + Math.cos(a) * R3, y = cy + Math.sin(a) * R3;
-    if (o) {
-      c.strokeStyle = COL.ice; c.lineWidth = 1.25;
-      c.beginPath(); c.arc(x, y, 13, 0, 6.2832); c.stroke();
-      c.font = `500 ${fontPx(20)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.ice;
-      c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(o.c, x, y + 1);
-      if (wide()) { c.textAlign = Math.cos(a) >= 0 ? 'left' : 'right'; c.fillText(o.l, x + Math.cos(a) * 22, y + Math.sin(a) * 22); }
-      return;
-    }
+  // the room's three choices sit spread over the top of the ring, each name above its letter
+  const opts = WK.opts || [];
+  opts.forEach((o, i) => {
+    const a = -Math.PI / 2 + (i - (opts.length - 1) / 2) * .62;
+    const x = clamp(cx + Math.cos(a) * R3, 18, W - 18), y = cy + Math.sin(a) * R3;
+    c.strokeStyle = COL.ice; c.lineWidth = 1.25;
+    c.beginPath(); c.arc(x, y, 13, 0, 6.2832); c.stroke();
+    c.font = `500 ${fontPx(20)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.ice;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(o.c, x, y + 1);
+    if (wide()) c.fillText(o.l, x, y - 13 - fontPx(20) * .9);
+  });
+  const optSet = new Set(opts.map(o => o.v));
+  nb.filter(v => !optSet.has(v)).forEach((v, k, arr) => {
+    const a = k / arr.length * 6.2832 - Math.PI / 2 + .2;
+    const x = cx + Math.cos(a) * R3, y = cy + Math.sin(a) * R3;
     const isNext = v === next;
     c.fillStyle = isNext ? COL.mint : alpha(COL.ice, .55);
     c.beginPath(); c.arc(x, y, isNext ? 4 : 2.2, 0, 6.2832); c.fill();
@@ -891,8 +1013,10 @@ function drawPortrait(c, L, aid, t) {
       c.strokeStyle = alpha(COL.mint, .7); c.lineWidth = 1;
       c.beginPath(); c.moveTo(cx + Math.cos(a) * (R2 + 36), cy + Math.sin(a) * (R2 + 36)); c.lineTo(x - Math.cos(a) * 7, y - Math.sin(a) * 7); c.stroke();
       c.font = `500 ${fontPx(20)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.mint;
-      c.textAlign = Math.cos(a) >= 0 ? 'left' : 'right'; c.textBaseline = 'middle';
-      c.fillText('next: ' + M.artistName(v), x + Math.cos(a) * 12, y + Math.sin(a) * 12);
+      const nt = 'next: ' + M.artistName(v), nw = c.measureText(nt).width, fb = freeBox();
+      const nx = clamp(x + Math.cos(a) * 12 - (Math.cos(a) >= 0 ? 0 : nw), fb.x0 - 40, fb.x1 + 12 - nw);
+      c.textAlign = 'left'; c.textBaseline = 'middle';
+      c.fillText(nt, nx, y + Math.sin(a) * 12);
     }
   });
 }
@@ -940,14 +1064,22 @@ function drawTrail(c, t, dt, steer) {
     if (cur) { c.strokeStyle = COL.mint; c.lineWidth = 1.5; c.beginPath(); c.arc(p[0], p[1], 11 + Math.sin(t * 2) * 1.5, 0, 6.2832); c.stroke(); }
     c.fillStyle = past || cur ? COL.mint : COL.ink;
     c.beginPath(); c.arc(p[0], p[1], cur ? 5 : 4, 0, 6.2832); c.fill();
-    if (!crowd || cur || i === 0 || i === n - 1) {
-      c.fillStyle = cur ? COL.ink : COL.dim;
-      let label = M.artistName(WK.stops[i]);
-      if (label.length > 22) label = label.slice(0, 21) + '…';
-      const lw = c.measureText(label).width / 2 + 12;
-      c.fillText(label, clamp(p[0], lw, W - lw), p[1] + 18 + (crowd && i % 2 ? fs * 1.3 : 0));
-    }
   });
+  // the current stop names itself first; any other name that would land on one already drawn drops a line, or stays quiet
+  const want = P.map((p, i) => i).filter(i => !crowd || i === WK.i || i === 0 || i === n - 1).sort((a, b) => (b === WK.i) - (a === WK.i));
+  const drawn = [];
+  for (const i of want) {
+    const p = P[i], cur = i === WK.i;
+    let label = M.artistName(WK.stops[i]);
+    if (label.length > 22) label = label.slice(0, 21) + '…';
+    const lw = c.measureText(label).width / 2 + 12, x = clamp(p[0], lw, W - lw);
+    const ys = [p[1] + 18 + (crowd && i % 2 ? fs * 1.3 : 0), p[1] + 18 + (crowd && i % 2 ? 0 : fs * 1.3)];
+    const y = ys.find(y => !drawn.some(d => Math.abs(d[0] - x) < d[2] + lw - 4 && Math.abs(d[1] - y) < fs * 1.2));
+    if (y == null) continue;
+    drawn.push([x, y, lw]);
+    c.fillStyle = cur ? COL.ink : COL.dim;
+    c.fillText(label, x, y);
+  }
   // the traveler
   const fi = Math.floor(WK.pos), fu = WK.pos - fi;
   if (fi < n - 1 && fu > .01) {
@@ -1249,7 +1381,7 @@ async function steerStep() {
   WK.i = WK.stops.length - 1;
   const pv = await M.previewFor(WK.stops.length === 1 ? pickFor(ST.A, ST.cur) : { aid: ST.cur });
   if (tok !== WK.tok) return;
-  setStop(WK.i, pv, { hop: `step ${ST.steps} · shortest ${ST.best}`, open: true });
+  setStop(WK.i, pv, { hop: `hop ${ST.steps + 1} · shortest ${ST.best}`, open: true });
   if (pv && player.ready) player.play(pv.url, { at: 2 }); else if (!pv) player.stop(.6);
   await M.related(ST.cur, 'hi');
   const res = await Gr.pathLive([ST.cur], ST.targets, { budget: 120 });
@@ -1265,7 +1397,7 @@ async function steerStep() {
   setText('#k-q', 'where next?');
   renderChoices(opts, v => steerChoose(v));
   const rd = openRound('steer', 'where next?', opts.map(o => ({ v: o.v, l: `${o.c}. ${o.l}` })), { best: good, better });
-  setText('#k-hop', `step ${ST.steps} · shortest ${ST.best} · ` + roundLine());
+  setText('#k-hop', `hop ${ST.steps + 1} · shortest ${ST.best} · ` + roundLine());
   setText('#k-go', 'go with the votes');
   autoClose(rd, 16000, () => steerChoose(null));
 }
@@ -1361,7 +1493,7 @@ function twinReveal() {
   const lead = mutual.length ? mutual[0] : f.closest ? `${L[f.closest[0]].n} + ${L[f.closest[1]].n}` : '';
   setText('#k-ans', lead);
   setText('#k-track', mutual.length > 1 ? 'also twins: ' + mutual.slice(1, 6).join(' · ') : mutual.length ? 'twins both ways.' : 'the closest pair in the room.');
-  setText('#k-right', right.length ? `found their twin: ${andList(right.map(nameOf))}` : 'nobody guessed their twin. now you know.');
+  setText('#k-right', right.length ? `found their twin: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody guessed their twin. now you know.' : '');
   setText('#k-go', 'guess again');
   const tw = {};
   DV.list.forEach((g, i) => { const t = twinsOf(i).map(j => DV.list[j].n); if (t.length) tw[g.k] = andList(t.slice(0, 2)); });
@@ -1428,13 +1560,13 @@ function oddReveal() {
   setText('#k-q', '');
   setText('#k-ans', `the stranger: ${s.g.n}'s ${slotName(s.p).replace(/-/g, '\u2011') || 'pick'}.`);
   setText('#k-track', `${w[OD.odd]} was ${pickLabel(s.p)}. the other two were ${pair[0].g.n}'s: ${pair.map(x => x.p.tt || x.p.an).join(' and ')}.`);
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-go', 'three more');
   closeRound({ text: `${w[OD.odd]} was the stranger`, right });
 }
 
 // ---------- the birthday round: six degrees to the birthday baby ----------
-const BD = { rows: [], active: false, final: false, prep: false };
+const BD = { rows: [], active: false, final: false, prep: false, rush: false };
 // the roads home are found in the background as soon as the birthday baby is flagged
 const BDP = { sig: '', rows: null, pr: null, i: 0, n: 0 };
 function bdaySig() {
@@ -1477,11 +1609,11 @@ function showNames(names) {
 }
 async function bdayStart() {
   const hostG = H.hostKey && H.guests.get(H.hostKey);
-  if (!hostG || !hostG.picks.length) { setText('#k-q', 'flag the birthday baby first: open join (j) and tap “birthday baby” next to a name.'); return; }
+  if (!hostG || !hostG.picks.length) { setText('#k-q', 'flag the birthday baby first: open the guest list (g) and tap “birthday baby” next to a name.'); return; }
   const tok = ++WK.tok;
   // her forever song starts now, before anything is looked up
   M.previewFor(hostG.picks[0]).then(pv => { if (tok === WK.tok && mode === 'bday' && pv && player.ready) player.play(pv.url, { at: 0 }); });
-  BD.active = true; BD.final = false; BD.rows = []; BD.prep = true;
+  BD.active = true; BD.final = false; BD.rows = []; BD.prep = true; BD.rush = false;
   setText('#k-ans', ''); setText('#k-right', ''); setText('#k-name', ''); setText('#k-track', '');
   setText('#k-q', 'every road leads to the birthday baby.');
   setText('#k-go', '');
@@ -1523,6 +1655,7 @@ async function bdayWalk() {
   $('#k-choices').textContent = '';
   renderBdayList();
   setText('#k-go', 'next stop'); setText('#k-q', ''); setText('#k-right', note);
+  footNote('n next stop · e skips to the end');
   // farthest first; after the first road, a walk stops where it joins a road already walked, then flashes home
   const walkOrder = BD.rows.filter(r => r.path).slice().reverse();
   const walked = new Map();
@@ -1540,10 +1673,12 @@ async function bdayWalk() {
       hopText: i => i === 0 ? `start · ${r.g.n}'s pick` : i === stops.length - 1 ? `home · ${hs}` : i === j ? `joins ${walked.get(path[j])}'s road` : `hop ${i} of ${r.hops}`,
       dwellAt: (i, n) => i === n - 1 ? (last ? 4000 : 2500) : i === j ? 3000 : w === 0 ? 3200 : 2500,
     });
-    if (!ok) return;
+    // e jumps straight to the final card
+    if (!ok) { if (BD.rush && BD.active && mode === 'bday') break; return; }
     for (const v of path.slice(0, j > 0 ? j : end)) if (!walked.has(v)) walked.set(v, r.g.n);
   }
   BD.final = true;
+  publish();
   const reach = BD.rows.filter(r => r.hops != null);
   const far = Math.max(0, ...reach.map(r => r.hops));
   const miss = BD.rows.length - reach.length;
@@ -1566,12 +1701,13 @@ function drawBdayFinal(c, t) {
   const p = pad(), jw = joinW();
   const fb = freeBox();
   // the caption sits under the rings, so the people closest to her never sit under it
-  const capH = fontPx(26) * 1.6;
+  // names hang just outside the rings, so the caption goes below the lowest name it could ever reach
+  const capH = fontPx(26) * 1.6, lab = 12 + fontPx(22) * .65;
   const cx = wide() ? (fb.x0 + fb.x1) / 2 : W / 2, cy = wide() ? (fb.y0 + fb.y1 - capH) / 2 : Hh * .5 - capH / 2;
   const rows = BD.rows.filter(r => r.path);
   c.font = `500 ${fontPx(22)}px "Instrument Sans", sans-serif`;
   const lw = Math.max(60, ...rows.map(r => c.measureText(r.g.n).width)) + 20;
-  const Rmax = wide() ? Math.min((fb.y1 - fb.y0 - capH) / 2, (fb.x1 - fb.x0) / 2 - lw) : Math.min(W / 2 - lw, (Hh - capH) * .42);
+  const Rmax = Math.max(40, wide() ? Math.min((fb.y1 - fb.y0 - capH) / 2 - lab, (fb.x1 - fb.x0) / 2 - lw) : Math.min(W / 2 - lw, (Hh - capH) * .42 - lab));
   const R0 = Math.min(44, Rmax * .2);
   const maxH = Math.max(1, ...rows.map(r => r.hops));
   c.strokeStyle = alpha(COL.ice, .2); c.lineWidth = 1;
@@ -1599,7 +1735,7 @@ function drawBdayFinal(c, t) {
   c.strokeStyle = COL.mint; c.lineWidth = 1.25;
   for (const r of [16, 28]) { c.beginPath(); c.arc(cx, cy, r + Math.sin(t * 1.4) * 2, 0, 6.2832); c.stroke(); }
   c.font = `600 ${fontPx(26)}px "Instrument Sans", sans-serif`; c.textAlign = 'center'; c.fillStyle = COL.mint; c.textBaseline = 'middle';
-  c.fillText('the birthday baby, in the middle', cx, cy + Rmax + capH * .6);
+  c.fillText('the birthday baby, in the middle', cx, cy + Rmax + lab + capH * .55);
 }
 
 // =====================================================================
@@ -1666,7 +1802,7 @@ async function nthReveal() {
   const nm = M.artistName(rd.path[i]) || rd.pv.an;
   const text = `${nm}: ${i} hop${i === 1 ? '' : 's'} from ${A.n}, ${h - i} from ${B.n}.`;
   setText('#k-q', ''); setText('#k-ans', `nearer ${ans === 'a' ? A.n : B.n}.`); setText('#k-track', text);
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-go', 'next clip');
   closeRound({ text, right });
   NT.reveal = true; WK.lit = i;
@@ -1725,7 +1861,7 @@ function matchReveal() {
   MT.reveal = true;
   const text = `${A.n} + ${B.n}`;
   setText('#k-q', ''); setText('#k-ans', text + '.');
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-go', 'next pair');
   closeRound({ text, right });
 }
@@ -1770,7 +1906,7 @@ function guiltyReveal() {
   const text = `it was ${nameOf(o)}'s guilty pleasure.`;
   setText('#k-q', ''); setText('#k-ans', text);
   setText('#k-track', `${rd.pv.tt} · ${rd.pv.an}`);
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-hop', `secret ${gpRound}`);
   setText('#k-go', 'next secret');
   closeRound({ text, right });
@@ -2062,14 +2198,14 @@ async function decadeReveal() {
   const text = `${year}. the ${lab}.`;
   setText('#k-hop', ''); setText('#k-q', ''); setText('#k-ans', text);
   setText('#k-track', `${rd.pv.tt} · ${rd.pv.an}`);
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : 'nobody got it.');
+  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-go', 'spin again');
   closeRound({ text, right });
   await Promise.race([warmYears(), sleep(8000)]);
   if (RD !== rd) return;
   const near = DV.list.map(g => [g, avgYear(g)]).filter(x => x[1] != null).sort((a, b) => Math.abs(a[1] - year) - Math.abs(b[1] - year)).slice(0, 3);
   DC.lit = new Set(near.map(x => x[0].k));
-  if (near.length) setText('#k-right', `${right.length ? `got it: ${andList(right.map(nameOf))}. ` : 'nobody got it. '}picks closest in years: ${andList(near.map(([g, a]) => `${g.n} (${Math.round(a)})`))}`);
+  if (near.length) setText('#k-right', `${right.length ? `got it: ${andList(right.map(nameOf))}. ` : RD && RD.votes && RD.votes.size ? 'nobody got it. ' : ''}picks closest in years: ${andList(near.map(([g, a]) => `${g.n} (${Math.round(a)})`))}`);
 }
 function drawDecade(c, t, dt) {
   if (DC.reveal) {
@@ -2121,7 +2257,8 @@ function freeBox() {
   if (!wide()) return { x0: 14, x1: W - 14, y0: 14, y1: Hh - 14 };
   const jw = joinW(), bd = $('#board');
   const on = BOARD_MODES.has(mode) || (mode === 'bday' && bd.style.display === 'block');
-  const x1 = W - jw - (on ? bd.offsetWidth + pad() + 28 : pad());
+  const pp = mode === 'photo' ? $('#p-photo').offsetWidth : 0;
+  const x1 = W - jw - (on ? bd.offsetWidth + pad() + 28 : pp ? pp + pad() + 36 : pad());
   const md = $('#modes'), col = $('#col');
   const cr = col.offsetWidth ? col.offsetLeft + col.offsetWidth + 24 : (W - jw) * .43;
   return { x0: Math.min(cr, x1 - 280), x1, y0: Math.max(Hh * .05 + 120, md.offsetTop + md.offsetHeight + 24), y1: Hh * .95 - 40 };
@@ -2367,8 +2504,8 @@ function awardList() {
   if (BDP.rows) {
     const cnt = new Map();
     for (const r of BDP.rows) if (r.path) for (const v of r.path.slice(1, -1)) cnt.set(v, (cnt.get(v) || 0) + 1);
-    const best = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0];
-    if (best && best[1] >= 3) out.push({ k: 'every road home passes', v: M.artistName(best[0]), s: `${best[1]} of your roads to the birthday baby go through here`, lit: [] });
+    const best = [...cnt.entries()].filter(e => e[0] !== f.bridge).sort((a, b) => b[1] - a[1])[0];
+    if (best && best[1] >= 3) out.push({ k: 'most roads home pass', v: M.artistName(best[0]), s: `${best[1]} of your roads to the birthday baby go through here`, lit: [] });
   }
   return out;
 }
@@ -2417,17 +2554,37 @@ async function toastGo() {
 function toastEnter() {
   TS.on = false;
   setText('#k-q', 'raise a glass.');
-  setText('#k-track', H.hostKey ? 'her forever song plays on one.' : 'flag the birthday baby (j) and her forever song plays too.');
+  setText('#k-track', H.hostKey ? 'her forever song plays on one.' : 'flag the birthday baby (g) and her forever song plays too.');
 }
 function photoRect() {
   const p = pad();
   if (!wide()) return { x: 14, y: Hh * .16, w: W - 28, h: Hh * .6 };
-  return { x: p + 60, y: Hh * .2, w: W - p * 2 - 120, h: Hh * .58 };
+  const side = $('#p-photo').offsetWidth;
+  const md = $('#modes'), y = Math.max(Hh * .2, md.offsetTop + md.offsetHeight + 24), cf = $('#cloud-facts').getBoundingClientRect();
+  const yb = cf.height ? Math.min(Hh * .78, cf.top - 50) : Hh * .78;
+  return { x: p + 60, y, w: W - p * 2 - 120 - (side ? side + 60 : 0), h: Math.max(160, yb - y) };
 }
 function photoEnter() {
   const day = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toLowerCase();
   setText('#m-sub', `${day} · ${DV.list.length} of us on the map`);
   renderSide();
+}
+// the photo: every name with the song they brought, the birthday baby first
+const PHOTO_MAX = 14;
+function renderPhotoList() {
+  const ol = $('#photo-ol');
+  if (!ol) return;
+  ol.textContent = '';
+  const L = DV.list.slice().sort((a, b) => (b.k === H.hostKey) - (a.k === H.hostKey));
+  const show = L.length > PHOTO_MAX ? L.slice(0, PHOTO_MAX - 1) : L;
+  for (const g of show) {
+    const p = g.picks.find(x => x.s === 0) || g.picks[0];
+    if (!p) continue;
+    const host = g.k === H.hostKey;
+    ol.append(el('li', { class: host ? 'host' : '' }, el('b', {}, host ? 'the birthday baby' : g.n), el('span', {}, p.k === 't' ? p.tt : p.an)));
+  }
+  if (show.length < L.length) ol.append(el('li', { class: 'more' }, el('b', {}, `and ${L.length - show.length} more`), el('span', {}, '')));
+  $('#p-photo').classList.toggle('empty', !ol.children.length);
 }
 const SG = { pv: null };
 async function singStart() {
@@ -2494,25 +2651,34 @@ const SET = [
   { m: 'photo', n: 1, l: 'the photo' }, { m: 'list', n: 1, l: 'the playlist, to close' },
 ];
 const SETKEY = { song: '3', odd: '9', steer: '7', twin: '8', hops: '6', bday: '0', awards: 'a', toast: 't', photo: 'p', list: '5', sing: 's' };
-const SETC = {};
+// each round counts toward one part of the set, so the finals start from zero
+const SETN = SET.map(() => 0);
+let setPos = 0, setLast = -1;
 function tallySet(m, how) {
-  if (how === 'enter' && !['awards', 'toast', 'photo', 'list'].includes(m)) { nextUp(); return; }
-  if (how === 'round') SETC[m] = (SETC[m] || 0) + 1;
-  if (how === 'enter') SETC[m] = Math.max(SETC[m] || 0, 1);
+  if (how === 'round' || ['awards', 'toast', 'photo', 'list'].includes(m)) {
+    let i = setLast >= 0 && SET[setLast].m === m ? setLast : SET.findIndex((x, j) => j >= setPos && x.m === m);
+    if (i < 0) i = SET.map(x => x.m).lastIndexOf(m);
+    if (i >= 0) {
+      SETN[i] = how === 'round' ? SETN[i] + 1 : Math.max(SETN[i], 1);
+      setLast = i;
+      if (i > setPos) setPos = i;
+      saveSoon();
+    }
+  }
   nextUp();
 }
-let setPos = 0;
+function setRestore(s) {
+  if (!s || !Array.isArray(s.n) || s.n.length !== SET.length) return;
+  s.n.forEach((v, i) => { SETN[i] = Math.max(0, v | 0); });
+  setPos = clamp(s.pos | 0, 0, SET.length); setLast = clamp(s.last | 0, -1, SET.length - 1);
+}
 function nextUp() {
   const b = $('#next-up');
   if (!b) return;
-  // the hint follows the host: once a later part of the set has started, the earlier ones are behind us
-  const at = SET.findIndex((x, i) => i >= setPos && x.m === mode);
-  if (at >= 0 && (SETC[mode] || 0) > 0) setPos = at;
-  while (setPos < SET.length && (SETC[SET[setPos].m] || 0) >= SET[setPos].n) setPos++;
+  while (setPos < SET.length && SETN[setPos] >= SET[setPos].n) setPos++;
   const nx = SET[setPos];
   if (!nx) { b.textContent = 'that was the night. 1 for the cloud.'; b.dataset.m = 'cloud'; return; }
-  const done = SETC[nx.m] || 0;
-  const more = nx.n - done;
+  const more = nx.n - SETN[setPos];
   b.dataset.m = nx.m;
   b.textContent = nx.m === mode
     ? `next: ${nx.l}${more > 1 ? `, ${more} more rounds` : ''} · space`
@@ -2625,6 +2791,7 @@ function renderSide() {
   if (f.widest >= 0) pbox.append(fact('widest taste', L[f.widest].n, '', `own picks ${f.widestHops >= Gr.FAR ? 'worlds apart' : hopsTxt(f.widestHops) + ' apart'}`));
   if (f.bridge) pbox.append(fact('the bridge', M.artistName(f.bridge), 'ice'));
   if (mode === 'walk') fillWalkSelects();
+  if (mode === 'photo') renderPhotoList();
 }
 let vol = 1, footMsg = '', footMsgT = 0;
 function footNote(t) { footMsg = t; footMsgT = Date.now(); footStats(); }
@@ -2642,7 +2809,7 @@ function hopRefresh() {
   if (RD.type === 'who') setText('#k-hop', `round ${songRound} · ${line}`);
   else if (RD.type === 'twin') setText('#k-hop', line);
   else if (RD.type === 'hops') setText('#k-hop', 'bets · ' + line);
-  else if (RD.type === 'steer') setText('#k-hop', `step ${ST.steps} · shortest ${ST.best} · ` + line);
+  else if (RD.type === 'steer') setText('#k-hop', `hop ${ST.steps + 1} · shortest ${ST.best} · ` + line);
   else if (RD.type === 'odd' && OD.playing >= 0) setText('#k-hop', `${['one', 'two', 'three'][OD.playing]} · ` + line);
   else if (RD.type === 'odd') setText('#k-hop', line);
   else if (RD.hp !== undefined) setText('#k-hop', RD.hp + line);
@@ -2652,7 +2819,7 @@ function hopRefresh() {
 function setupNav() {
   document.querySelectorAll('#modes button[data-mode]').forEach(b => b.addEventListener('click', () => {
     $('#more').classList.add('hide'); $('#more-btn').setAttribute('aria-expanded', 'false');
-    if (b.dataset.mode === 'join') toggleJoin(); else if (!(b.dataset.mode === mode && ((RD && RD.open) || (BD.active && !BD.final)))) enterMode(b.dataset.mode);
+    if (b.dataset.mode === 'join') toggleBig(); else if (!(b.dataset.mode === mode && ((RD && RD.open) || (BD.active && !BD.final)))) enterMode(b.dataset.mode);
   }));
   $('#more-btn').addEventListener('click', e => { e.stopPropagation(); const o = $('#more').classList.toggle('hide'); $('#more-btn').setAttribute('aria-expanded', String(!o)); });
   document.addEventListener('click', e => { if (!e.target.closest('#more')) { $('#more').classList.add('hide'); $('#more-btn').setAttribute('aria-expanded', 'false'); } });
@@ -2665,8 +2832,9 @@ function setupNav() {
   document.addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!$('#hand').classList.contains('hide') || !$('#bulk').classList.contains('hide')) return;
-    if (e.key === 'Escape') { $('#more').classList.add('hide'); return; }
+    if (e.key === 'Escape') { $('#more').classList.add('hide'); toggleBig(false); return; }
     wake();
+    if (!$('#bigjoin').classList.contains('hide') && !['m', 'f', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); toggleBig(false); if (e.key === 'g') toggleJoin(true); return; }
     if (e.key === 'm') { player.muted = !player.muted; if (player.master) player.master.gain.value = player.muted ? 0 : vol; footNote(player.muted ? 'sound off · m turns it on' : 'sound on'); return; }
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); vol = clamp(vol + (e.key === 'ArrowUp' ? .1 : -.1), 0, 1); if (player.master && !player.muted) player.master.gain.value = vol; footNote(`volume ${Math.round(vol * 100)}`); return; }
     if (keys[e.key]) {
@@ -2677,8 +2845,11 @@ function setupNav() {
       armed = '';
       enterMode(m);
     }
-    else if (e.key === 'j') toggleJoin();
-    else if (e.key === 'k') savePoster();
+    else if (e.key === 'j') toggleBig();
+    else if (e.key === 'g') toggleJoin();
+    else if (e.key === 'K') savePoster();
+    else if (e.key === 'k') footNote('shift+k saves the poster');
+    else if (e.key === 'e' && mode === 'bday' && BD.active && !BD.final && !BD.prep && !(RD && RD.open)) { BD.rush = true; ++WK.tok; }
     else if (e.key === 'f') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
     else if (e.key === ' ' || e.key === 'Enter') { if (e.target.closest('button')) return; e.preventDefault(); const f = GO[mode]; if (f) f(); }
     else if (e.key === 'n' || e.key === 'ArrowRight') {
@@ -2708,6 +2879,19 @@ function toggleJoin(force) {
   $('#modes .join-btn').setAttribute('aria-pressed', String(show));
   if (show) { drawQR(); renderJoin(); }
 }
+// the code to scan, as big as the TV allows; any key puts the game back
+function toggleBig(force) {
+  const b = $('#bigjoin');
+  const show = force !== undefined ? force : b.classList.contains('hide');
+  b.classList.toggle('hide', !show);
+  if (show) { drawQR(); bigJoinText(); joinCalm(); }
+}
+function bigJoinText() {
+  if ($('#bigjoin').classList.contains('hide')) return;
+  const n = [...H.guests.values()].filter(g => g.src === 'p2p').length;
+  const late = JOINS.slice(-3).reverse().map(j => j.n);
+  setText('#bj-n', n ? `${n} phone${n === 1 ? '' : 's'} in${late.length ? ` · just in: ${andList(late)}` : ''}` : 'be the first one in');
+}
 function drawQR() {
   const qr = qrcode(0, 'M');
   qr.addData(joinUrl());
@@ -2723,8 +2907,9 @@ function drawQR() {
   setText('#join-link', u.host + u.pathname);
   setText('#join-code', K && !DEMO ? 'room ' + K.code : '');
   setText('#lobby-code', K && !DEMO ? `room ${K.code} · the password is on the card` : '');
-  const c2 = $('#qr2');
-  if (c2) { c2.width = c.width; c2.height = c.height; c2.getContext('2d').drawImage(c, 0, 0); }
+  for (const c2 of [$('#qr2'), $('#qr3')]) if (c2) { c2.width = c.width; c2.height = c.height; c2.getContext('2d').drawImage(c, 0, 0); }
+  setText('#bj-url', u.host + (u.pathname.length > 1 ? '\n' + u.pathname.replace(/\/$/, '') : ''));
+  setText('#bj-code', K && !DEMO ? 'room ' + K.code : '');
   setText('#join-pwnote', H.pwQr ? 'the code carries the password. keep it in the room.' : 'then the password. ask the host.');
 }
 function renderJoin() {
@@ -2745,6 +2930,9 @@ function renderJoin() {
   }
 }
 function setupJoin() {
+  $('#bj-list').addEventListener('click', e => { e.stopPropagation(); toggleBig(false); toggleJoin(true); });
+  $('#bigjoin').addEventListener('click', e => { if (!e.target.closest('button')) toggleBig(false); });
+  try { localStorage.setItem('party.probe', '1'); localStorage.removeItem('party.probe'); } catch (e) { setText('#join-msg', 'this browser is not saving the room. tap “save room file” now and then.'); }
   $('#join-pwqr').addEventListener('click', () => {
     H.pwQr = !H.pwQr;
     $('#join-pwqr').setAttribute('aria-pressed', String(H.pwQr));
@@ -3003,7 +3191,7 @@ async function bulkRead(text) {
     if (seenN[low] > 1) p.n = `${p.n.slice(0, 21)} ${seenN[low]}`;
   }
   if (!BK.people.length) { setText('#b-msg', 'nobody found in that. one person per line: name | song - artist | song - artist | artist'); renderBulk(); return; }
-  BK.busy = true; renderBulk();
+  BK.busy = true; BK.f0 = M.stats.fails; renderBulk();
   let done = 0; const total = () => BK.people.reduce((a, p) => a + p.items.length, 0);
   const queue = BK.people.slice();
   const work = async () => {
@@ -3027,6 +3215,7 @@ function bulkSummary() {
   const its = BK.people.flatMap(p => p.items);
   const check = its.filter(i => i.how === 'close' || i.how === 'artist').length, bad = its.filter(i => i.how === 'none' || i.how === 'fail').length;
   const nobody = BK.people.filter(p => !p.items.some(i => i.pick && i.s !== 'gp')).length;
+  if (bad && !its.some(i => i.pick) && M.stats.fails > (BK.f0 || 0)) { setText('#b-msg', `${BK.people.length} people, but the music search is not answering, so nothing could be looked up. check the wifi, then read again.`); return; }
   setText('#b-msg', `${BK.people.length} people. ${bad ? `${bad} not found (red). ` : ''}${check ? `${check} to check (yellow): tap fix if it is wrong. ` : ''}${nobody ? `${nobody} with no picks yet: they can join by phone and still play. ` : ''}then add all.`);
 }
 const HOWTXT = { ok: '', close: 'check', artist: 'artist only', empty: 'left empty', none: 'not found', fail: 'lookup failed' };
@@ -3144,7 +3333,13 @@ async function guestMain() {
   let askId = '';
   const asked = {};
   // no picks is fine: you still vote in every round
-  const upd = () => { $('#g-send').disabled = !$('#g-name').value.trim(); setText('#g-send', pk.get().length ? 'put me on the map' : 'just play along'); };
+  const upd = () => { $('#g-send').disabled = !$('#g-name').value.trim(); setText('#g-send', pk.get().length ? 'put me on the map' : 'just play along'); dupCheck(); };
+  // two people called Sam: the screen will say Sam 2, so say it here first
+  const dupCheck = () => {
+    const nm = $('#g-name').value.trim().toLowerCase();
+    const twin = nm && lastShow && (lastShow.roster || []).find(g => !g.h && g.k !== 'p' + me.id && g.n.toLowerCase() === nm);
+    setText('#g-dup', twin ? `someone here is already ${twin.n}. add an initial so the screen can tell you apart.` : '');
+  };
   $('#g-name').addEventListener('input', upd);
   const myKey = 'party.me.' + K.roomId;
   let NETg = null, lastShow = null, voted = {};
@@ -3192,7 +3387,7 @@ async function guestMain() {
     for (const p of me.picks) ul.append(el('li', {}, el('b', {}, p.k === 't' ? p.tt : p.an), el('span', {}, (slotName(p) ? slotName(p) + ' · ' : '') + (p.k === 't' ? `song · ${p.an}` : 'artist'))));
     if (labels) for (const l of labels) ul.append(el('li', {}, el('b', {}, l), el('span', {}, 'from the host’s list')));
     if (!has) ul.append(el('li', {}, el('span', {}, 'no picks needed. you vote in every round. add picks any time to get a dot on the map.')));
-    if (me.gp) ul.append(el('li', {}, el('b', {}, me.gp.k === 't' ? me.gp.tt : me.gp.an), el('span', {}, 'guilty pleasure · only you can see this')));
+    if (me.gp) ul.append(el('li', {}, el('b', {}, me.gp.k === 't' ? me.gp.tt : me.gp.an), el('span', {}, 'guilty pleasure · secret until the guilty round')));
     setText('#g-edit', has ? 'change my picks' : 'add picks');
   };
   const sendMe = () => { if (NETg) NETg.guest.set({ id: me.id, n: me.name, picks: me.picks, gp: me.gp, claim: me.claim || undefined, t: Date.now() }).catch(() => {}); };
@@ -3245,6 +3440,7 @@ async function guestMain() {
     const res = $('#g-res');
     const tm = s && s.teams;
     setText('#g-team', tm && tm.m[my] !== undefined ? `you are on ${tm.n[tm.m[my]]}. ${tm.n[0]} ${tm.tot[0]} · ${tm.n[1]} ${tm.tot[1]}` : '');
+    try { renderKeep(s, my); } catch (e) { $('#g-keep').classList.add('hide'); $('#g-room').classList.remove('keeping'); }
     const ask = r && r.open && s.ask && s.ask.k.includes(my) ? s.ask : null;
     $('#g-ask').classList.toggle('hide', !ask);
     if (ask) {
@@ -3272,13 +3468,72 @@ async function guestMain() {
       setText('#g-vmsg', mine !== undefined ? 'locked in. eyes on the screen.' : '');
     } else {
       box.classList.add('hide');
-      if (r.res) {
+      if (r.res && !$('#g-room').classList.contains('keeping')) {
         const got = my && (r.res.right || []).includes(my);
         const mine = r.type === 'twin' && r.res.tw && r.res.tw[my];
-        res.textContent = (mine ? `the map says your twin is ${mine}. ` : '') + r.res.text + (voted[r.id] !== undefined ? (got ? ' you got a point.' : '') : '');
+        res.textContent = (mine ? `the map says your twin is ${mine}. ` : '') + String(r.res.text || '').replace(/[^.!?]$/, '$&.') + (voted[r.id] !== undefined ? (got ? ' you got a point.' : '') : '');
         res.classList.toggle('ok', !!got);
       } else res.textContent = '';
     }
+  }
+  let keepSig = '';
+  const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  function renderKeep(s, my) {
+    const kp = s && s.keep, c = kp && kp.c && kp.c[my];
+    $('#g-keep').classList.toggle('hide', !c);
+    $('#g-room').classList.toggle('keeping', !!c);
+    if (!c) { keepSig = ''; return; }
+    const sig = JSON.stringify(c) + '|' + kp.xy.length + '|' + innerWidth;
+    if (sig === keepSig) return;
+    const first = !keepSig;
+    keepSig = sig;
+    setText('#gk-name', c.n);
+    const ul = $('#gk-facts'); ul.textContent = '';
+    const row = (b, t) => ul.append(el('li', {}, el('b', {}, b), el('span', {}, t)));
+    if (c.home) row(`${c.home} road${c.home === 1 ? '' : 's'}`, 'led to you tonight');
+    if (c.tw) row(c.tw, 'your taste twin');
+    if (c.hp != null) row(c.hp === 0 ? 'zero hops' : `${c.hp} hop${c.hp === 1 ? '' : 's'}`, 'from your pick to the birthday baby');
+    if (c.sp) row(c.sp, 'your spot on the map');
+    if (c.i < 0 && !c.home) row('no dot tonight', 'you played every round anyway');
+    const pts = `${c.pt || 0} point${c.pt === 1 ? '' : 's'}`;
+    row(c.rk ? `${pts} · ${ord(c.rk)} place` : pts, 'your night in the game');
+    drawKeep(kp, c);
+    if (first) setTimeout(() => $('#g-keep').scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
+  }
+  function drawKeep(kp, c) {
+    const cv = $('#gk-map'), w = cv.clientWidth || 300, h = Math.round(w * .72), dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cs = getComputedStyle(document.documentElement), col = k => cs.getPropertyValue('--' + k).trim();
+    const sx = w / 2 * .78, sy = h / 2 * .74, ax = Math.min(sx, sy * 1.7), ay = Math.min(sy, sx);
+    const P = kp.xy.map(p => [w / 2 + p[0] * ax, h / 2 + p[1] * ay]);
+    const me = c.i >= 0 ? P[c.i] : c.home && kp.h >= 0 ? P[kp.h] : null, home = kp.h >= 0 ? P[kp.h] : null;
+    x.lineWidth = 1.25; x.strokeStyle = col('ice');
+    if (me) for (const j of c.tj || []) if (P[j]) { x.beginPath(); x.moveTo(me[0], me[1]); x.lineTo(P[j][0], P[j][1]); x.stroke(); }
+    P.forEach((p, j) => { if (p === me || p === home) return; x.fillStyle = (c.tj || []).includes(j) ? col('ice') : col('faint'); x.beginPath(); x.arc(p[0], p[1], 3.5, 0, 6.2832); x.fill(); });
+    const ring = (p, color, r) => { x.strokeStyle = color; x.lineWidth = 1.5; x.beginPath(); x.arc(p[0], p[1], r, 0, 6.2832); x.stroke(); };
+    if (home && home !== me) { x.fillStyle = col('mint'); x.beginPath(); x.arc(home[0], home[1], 4.5, 0, 6.2832); x.fill(); ring(home, col('mint'), 10); }
+    if (me) { x.fillStyle = col('ink'); x.beginPath(); x.arc(me[0], me[1], 6, 0, 6.2832); x.fill(); ring(me, col('mint'), 12); ring(me, col('mint'), 19); }
+    x.font = '500 12px "IBM Plex Mono", ui-monospace, monospace'; x.textBaseline = 'middle';
+    const boxes = P.map(p => [p[0] - 5, p[1] - 5, 10, 10]);
+    const label = (p, t, color, r) => {
+      const tw = x.measureText(t).width, hh = 14;
+      const d = r * .8 + 6;
+      const cand = [[p[0] + r + 6, p[1]], [p[0] - r - 6 - tw, p[1]], [p[0] - tw / 2, p[1] - r - 10], [p[0] - tw / 2, p[1] + r + 10], [p[0] + d, p[1] - d], [p[0] + d, p[1] + d], [p[0] - d - tw, p[1] - d], [p[0] - d - tw, p[1] + d]];
+      let best = cand[0], bo = Infinity;
+      for (const q of cand) {
+        let o = q[0] < 4 || q[0] + tw > w - 4 || q[1] - hh / 2 < 2 || q[1] + hh / 2 > h - 2 ? 1e6 : 0;
+        for (const b of boxes) o += Math.max(0, Math.min(q[0] + tw, b[0] + b[2]) - Math.max(q[0], b[0])) * Math.max(0, Math.min(q[1] + hh / 2, b[1] + b[3]) - Math.max(q[1] - hh / 2, b[1]));
+        if (o < bo) { bo = o; best = q; }
+        if (!o) break;
+      }
+      boxes.push([best[0], best[1] - hh / 2, tw, hh]);
+      // a crowded map can leave no clear spot; a halo in the map color keeps the name readable over a dot
+      x.lineJoin = 'round'; x.lineWidth = 4; x.strokeStyle = col('night'); x.strokeText(t, best[0], best[1]);
+      x.fillStyle = color; x.fillText(t, best[0], best[1]);
+    };
+    if (me) { boxes.push([me[0] - 20, me[1] - 20, 40, 40]); label(me, c.home ? 'you, the birthday baby' : 'you', col('ink'), 20); }
+    if (home && home !== me) { boxes.push([home[0] - 11, home[1] - 11, 22, 22]); label(home, 'the birthday baby', col('mint'), 11); }
   }
   $('#g-ask-send').addEventListener('click', () => {
     const p = apk.get()[0];
@@ -3307,7 +3562,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120c');
+    const { openRoom } = await import('./sync.js?v=20261120h');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');
@@ -3315,7 +3570,7 @@ async function guestMain() {
   setInterval(chip, 4000); addEventListener('online', chip); addEventListener('offline', chip);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { chip(); if (me.joined) wakeLock(); } });
   if (NETg.onNetError) NETg.onNetError(e => { if (e && e.code === 'peer-connect-failed' && !lastShow) { netFail = true; render(); } });
-  NETg.show.onChange(v => { lastShow = v; netFail = false; render(); });
+  NETg.show.onChange(v => { lastShow = v; netFail = false; render(); if (!$('#g-form').classList.contains('hide')) dupCheck(); });
   // keep the host's sealed backup; hand it to a host that comes back with less
   const vKey = 'party.vault.' + K.roomId;
   let mine = null, offerT = 0;

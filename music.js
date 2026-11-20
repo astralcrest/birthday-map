@@ -48,11 +48,16 @@ export function seed(d) {
 const lanes = { hi: [], mid: [], lo: [] };
 let active = 0, lastStart = 0, pumpTimer = 0, coolUntil = 0, strikes = 0;
 const MAX = 4, GAP = 125;
+let calmUntil = 0;
+// background lookups yield while phones are joining; a finishing request pumps again
+export function calm(ms) { calmUntil = Math.max(calmUntil, performance.now() + ms); }
 function pump() {
   clearTimeout(pumpTimer);
   while (active < MAX && (lanes.hi.length || lanes.mid.length || lanes.lo.length)) {
+    const quiet = !lanes.hi.length && !lanes.mid.length && performance.now() < calmUntil;
+    if (quiet && active) return;
     // one quota error pauses the whole queue, not just the one request
-    const wait = Math.max(GAP - (performance.now() - lastStart), coolUntil - performance.now());
+    const wait = Math.max((quiet ? 600 : GAP) - (performance.now() - lastStart), coolUntil - performance.now());
     if (wait > 0) { pumpTimer = setTimeout(pump, wait); return; }
     lastStart = performance.now();
     const job = lanes.hi.length ? lanes.hi.shift() : lanes.mid.length ? lanes.mid.shift() : lanes.lo.shift();

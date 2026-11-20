@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120q';
-import * as Gr from './graph.js?v=20261120q';
-import { Player } from './audio.js?v=20261120q';
+import * as M from './music.js?v=20261120s';
+import * as Gr from './graph.js?v=20261120s';
+import { Player } from './audio.js?v=20261120s';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -490,6 +490,12 @@ function keepsakes() {
           if (nb) { o.nw = [M.artistName(nb), p.an]; break; }
         }
       }
+      // no picks, still a bag: a song from the middle of the room, and the artist that links the most of it
+      if (i < 0 && L.length) {
+        const cg = L[f.center >= 0 ? f.center : 0], gp = cg && (cg.picks.find(p => p.tid) || cg.picks[0]);
+        if (gp) o.gf = [gp.tid ? gp.tt : gp.an, gp.tid ? gp.an : '', gp.tid || 0, cg.k === H.hostKey ? 'the birthday baby' : cg.n];
+        if (f.bridge && M.artistName(f.bridge)) o.nw = [M.artistName(f.bridge), ''];
+      }
       c[g.k] = o;
     }
     return { xy, h: hi, c };
@@ -551,7 +557,9 @@ function fakeVotes(rd) {
 
 // ---------- host: start ----------
 // the start link's list is read once per room; a reload or a second open never doubles anyone
-function autoList() {
+async function autoList() {
+  if (H.guests.size) return;
+  if (!AUTOLIST) { try { const r = await fetch('guests.json', { cache: 'no-store' }); if (r.ok) AUTOLIST = (await unseal(K.key, await r.json())).list || ''; } catch (e) { /* another password, or no list */ } }
   if (!AUTOLIST || H.guests.size) return;
   bulkRead(AUTOLIST).then(() => {
     if (H.guests.size || !BK.people.some(p => p.items.some(i => i.pick && i.s !== 'gp'))) { if (!H.guests.size) $('#bulk').classList.remove('hide'); return; }
@@ -568,7 +576,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120q').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120s').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -612,7 +620,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120q');
+    const { openRoom } = await import('./sync.js?v=20261120s');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -657,7 +665,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120q').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120s').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -3663,14 +3671,14 @@ async function guestMain() {
     if (c.tw) row(c.tw, 'your taste twin');
     if (c.hp != null) row(c.hp === 0 ? 'zero hops' : `${c.hp} hop${c.hp === 1 ? '' : 's'}`, 'from your pick to the birthday baby');
     if (c.sp) row(c.sp, 'your spot on the map');
-    if (c.i < 0 && !c.home) row('no dot tonight', 'you played every round anyway');
+    if (c.i < 0 && !c.home) row('no dot tonight', 'you played every round anyway. add picks any time to get one.');
     const pts = `${c.pt || 0} point${c.pt === 1 ? '' : 's'}`;
     row(c.rk ? `${pts} · ${ord(c.rk)} place` : pts, 'your night in the game');
     const bag = $('#gk-bag'); bag.textContent = '';
     const lk = (q, tid) => el('span', { class: 'a' }, el('a', { href: M.spotifyLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'), el('a', { href: M.appleLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'apple'));
     const gift = (h, t, s, q, tid) => bag.append(el('li', {}, el('span', { class: 't' }, el('span', {}, h), el('b', {}, t), s ? el('span', {}, s) : ''), lk(q, tid)));
-    if (c.gf) gift(`a song from ${c.gf[3]}, the closest to you`, String(c.gf[0]), c.gf[1] ? String(c.gf[1]) : 'artist', [c.gf[0], c.gf[1]].filter(Boolean).join(' '), +c.gf[2] || 0);
-    if (c.nw) gift('new for you: nobody brought this one', String(c.nw[0]), `next door to ${c.nw[1]}`, String(c.nw[0]), 0);
+    if (c.gf) gift(c.i < 0 ? `a song from ${c.gf[3]}, the middle of the room` : `a song from ${c.gf[3]}, the closest to you`, String(c.gf[0]), c.gf[1] ? String(c.gf[1]) : 'artist', [c.gf[0], c.gf[1]].filter(Boolean).join(' '), +c.gf[2] || 0);
+    if (c.nw) gift(c.i < 0 ? 'the artist holding this room together' : 'new for you: nobody brought this one', String(c.nw[0]), c.i < 0 ? 'start here' : `next door to ${c.nw[1]}`, String(c.nw[0]), 0);
     bag.classList.toggle('hide', !bag.children.length);
     drawKeep(kp, c);
     if (first) setTimeout(() => { const f = $('#g-fin'); (f.classList.contains('hide') ? $('#g-keep') : f).scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80);
@@ -3786,7 +3794,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120q');
+    const { openRoom } = await import('./sync.js?v=20261120s');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

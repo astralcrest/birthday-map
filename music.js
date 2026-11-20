@@ -449,4 +449,7 @@ export async function previewFor(p, nth = 0) {
 }
 
 export function spotifySearch(q) { return 'https://open.spotify.com/search/' + encodeURIComponent(q); }
+const via = (tid, to) => 'https://song.link/redirect?url=' + encodeURIComponent('https://www.deezer.com/track/' + tid) + '&to=' + to;
+export function spotifyLink(q, tid) { return tid ? via(tid, 'spotify') : spotifySearch(q); }
+export function appleLink(q, tid) { return tid ? via(tid, 'appleMusic') : appleSearch(q); }
 export function appleSearch(q) { return 'https://music.apple.com/us/search?term=' + encodeURIComponent(q); }

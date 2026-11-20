@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120m';
-import * as Gr from './graph.js?v=20261120m';
-import { Player } from './audio.js?v=20261120m';
+import * as M from './music.js?v=20261120n';
+import * as Gr from './graph.js?v=20261120n';
+import { Player } from './audio.js?v=20261120n';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -447,7 +447,7 @@ function publish() {
       keep: keepsakes(),
       // the finale on the phones: the award the screen shows, and the playlist in the screen's order
       aw: mode === 'awards' ? AW.pub : null,
-      pl: mode === 'list' && tourItems.length ? tourItems.map(it => it.p.k === 't' ? [it.p.tt, it.p.an] : [it.p.an]) : null,
+      pl: mode === 'list' && tourItems.length ? tourItems.map(it => it.p.k === 't' ? [it.p.tt, it.p.an, it.p.tid || 0] : [it.p.an]) : null,
     };
     NET.show.set(s).catch(() => {});
   }, 120);
@@ -544,7 +544,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120m').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120n').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -587,7 +587,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120m');
+    const { openRoom } = await import('./sync.js?v=20261120n');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -632,13 +632,15 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120m').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120n').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
+  const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
+  const sk = [...new Set(people.flatMap(p => p[1]).map(s => byName.get(s.slice(2).split('|').pop().toLowerCase())).filter(Boolean))];
   people.slice(0, n).forEach(([name, specs], i) => {
-    const picks = specs.map(s => seed && seed.picks[s]).filter(Boolean).map((p, j) => cleanPick({ k: p.k, aid: p.aid, an: p.an, tid: p.tid, tt: p.tt, s: j }));
+    const picks = specs.map(s => byName.get(s.slice(2).split('|').pop().toLowerCase())).filter(Boolean).map((p, j) => cleanPick({ k: 'a', aid: p[0], an: p[1], s: j }));
     const k = 'demo-' + i;
-    const sk = seed ? Object.keys(seed.picks) : [], gs = i % 3 === 2 || !sk.length ? null : seed.picks[sk[(i * 11 + 5) % sk.length]];
+    const gs = i % 3 === 2 || !sk.length ? null : { k: 'a', aid: sk[(i * 11 + 5) % sk.length][0], an: sk[(i * 11 + 5) % sk.length][1] };
     H.guests.set(k, { k, n: name, picks, gp: gs ? cleanPick(gs) : null, src: 'demo', t: i });
   });
   H.hostKey = 'demo-0';
@@ -2423,8 +2425,8 @@ function renderList() {
       el('span', { class: 't' }, el('b', {}, it.p.k === 't' ? it.p.tt : it.p.an), el('span', {}, `${it.p.k === 't' ? it.p.an + ' · ' : 'artist · '}${it.who.join(' + ')}`)),
       el('span', { class: 'a' },
         el('button', { type: 'button', onclick: () => playTour(i, true) }, 'play'),
-        el('a', { href: M.spotifySearch(q), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'),
-        el('a', { href: M.appleSearch(q), target: '_blank', rel: 'noopener noreferrer' }, 'apple'))));
+        el('a', { href: M.spotifyLink(q, it.p.tid), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'),
+        el('a', { href: M.appleLink(q, it.p.tid), target: '_blank', rel: 'noopener noreferrer' }, 'apple'))));
   });
   setText('#m-sub', `${tourItems.length} tracks, one tour.`);
 }
@@ -2506,7 +2508,7 @@ const DRAW = {
   nth: (c, t, dt) => NT.reveal ? drawWalk(c, t, dt) : drawNth(c, t), match: drawMatch, guilty: (c, t) => drawSong(c, t), bridge: drawBridge, teams: drawTeams, decade: drawDecade,
   twin: (c, t, dt) => drawCloud(c, t, dt, { twins: true, rect: twinRect(), noLinks: !!(RD && RD.type === 'twin' && RD.open) }),
   pairs: drawPairs, list: drawList,
-  awards: (c, t, dt) => drawCloud(c, t, dt, { rect: sideRect(), lit: AW.lit && AW.lit.size ? AW.lit : null, fs: fontPx(28), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }),
+  awards: (c, t, dt) => drawCloud(c, t, dt, { rect: sideRect(), lit: AW.lit && AW.lit.size ? AW.lit : null, fs: fontPx(W < 1500 ? 21 : 28), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }),
   toast: (c, t) => drawSong(c, t, TS.on ? 1.15 : .9),
   photo: (c, t, dt) => drawCloud(c, t, dt, { rect: photoRect(), fs: fontPx(30), nameOf: g => g.k === H.hostKey ? 'the birthday baby' : g.n }),
   sing: (c, t) => drawSong(c, t),
@@ -3450,7 +3452,7 @@ async function guestMain() {
     const ul = $('#g-mine'); ul.textContent = '';
     if (nm !== me.name) ul.append(el('li', {}, el('span', {}, `the screen calls you ${nm}.`)));
     for (const p of me.picks) ul.append(el('li', {}, el('b', {}, p.k === 't' ? p.tt : p.an), el('span', {}, (slotName(p) ? slotName(p) + ' · ' : '') + (p.k === 't' ? `song · ${p.an}` : 'artist'))));
-    if (labels) for (const l of labels) ul.append(el('li', {}, el('b', {}, l), el('span', {}, 'from the host’s list')));
+    if (labels) for (const l of labels) ul.append(el('li', {}, el('b', {}, l), el('span', {}, 'your pick')));
     if (!has) ul.append(el('li', {}, el('span', {}, 'no picks needed. you vote in every round. add picks any time to get a dot on the map.')));
     if (me.gp) ul.append(el('li', {}, el('b', {}, me.gp.k === 't' ? me.gp.tt : me.gp.an), el('span', {}, 'guilty pleasure · secret until the guilty round')));
     setText('#g-edit', has ? 'change my picks' : 'add picks');
@@ -3603,10 +3605,10 @@ async function guestMain() {
         add('h2', '', 'tap a song to hear it.');
         const ol = el('ol', { class: 'gf-list' });
         rows.forEach((r, i) => {
-          const q = r.filter(Boolean).join(' ');
+          const q = r.slice(0, 2).filter(Boolean).join(' '), tid = +r[2] || 0;
           ol.append(el('li', {}, el('span', { class: 'i' }, String(i + 1).padStart(2, '0')),
             el('span', { class: 't' }, el('b', {}, String(r[0])), el('span', {}, r[1] ? String(r[1]) : 'artist')),
-            el('span', { class: 'a' }, el('a', { href: M.spotifySearch(q), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'), el('a', { href: M.appleSearch(q), target: '_blank', rel: 'noopener noreferrer' }, 'apple'))));
+            el('span', { class: 'a' }, el('a', { href: M.spotifyLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'), el('a', { href: M.appleLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'apple'))));
         });
         box.append(ol);
       }
@@ -3677,7 +3679,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120m');
+    const { openRoom } = await import('./sync.js?v=20261120n');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

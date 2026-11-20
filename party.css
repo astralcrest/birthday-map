@@ -288,6 +288,7 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 .opts button { font: 600 16px/1.2 var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 26px; min-height: 56px; padding: 10px 14px; cursor: pointer; overflow-wrap: anywhere; }
 .opts button[aria-pressed=true] { background: var(--mint); color: var(--night); border-color: var(--mint); }
 .opts button:disabled:not([aria-pressed=true]) { opacity: .4; }
+@media (max-width: 380px) { .opts button { padding: 10px 8px; } }
 .g-res { font: 600 22px/1.2 var(--sans); margin-top: 18px; }
 .g-keep { border: 1px solid var(--line); border-radius: 22px; padding: 16px 18px 14px; margin: 18px 0 6px; scroll-margin-top: 12px; }
 .g-keep h2 { margin: 4px 0 10px !important; color: var(--mint); overflow-wrap: anywhere; }
@@ -298,6 +299,19 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 .g-res.ok { color: var(--mint); }
 .g-score { font: 400 13px/1.4 var(--mono); color: var(--dim); margin: 18px 0 14px; }
 .g-score:empty { display: none; }
+.g-fin { margin: 18px 0 6px; scroll-margin-top: 12px; }
+#g-fin h2 { margin: 4px 0 10px; overflow-wrap: anywhere; }
+.gf-big { font: 600 30px/1.1 var(--sans); letter-spacing: -.02em; color: var(--mint); margin: 8px 0; overflow-wrap: anywhere; }
+.gf-s { font: 400 14px/1.45 var(--mono); color: var(--dim); }
+.gf-you { font: 600 22px/1.2 var(--sans); color: var(--mint); margin-top: 12px; }
+.gf-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.gf-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.gf-list .i { font: 500 12px/1 var(--mono); color: var(--faint); flex: none; }
+.gf-list .t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.gf-list .t b { display: block; font: 600 16px/1.25 var(--sans); }
+.gf-list .t span { display: block; font: 400 12px/1.3 var(--mono); color: var(--dim); }
+.gf-list .a { display: flex; gap: 6px; flex: none; }
+.gf-list .a a { font: 500 12px/1 var(--mono); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; min-height: 44px; min-width: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 
 /* by hand */
 #hand { position: fixed; inset: 0; z-index: 20; background: rgba(6, 1, 15, .92); display: grid; place-items: center; padding: 16px; overflow-y: auto; }

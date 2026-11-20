@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120s';
-import * as Gr from './graph.js?v=20261120s';
-import { Player } from './audio.js?v=20261120s';
+import * as M from './music.js?v=20261120y';
+import * as Gr from './graph.js?v=20261120y';
+import { Player } from './audio.js?v=20261120y';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -440,6 +440,7 @@ function publish() {
     const list = guestList();
     const s = {
       v: 1, mode, code: K.code, t: Date.now(),
+      hw: HOW[mode] ? [MODES[mode].title, ...HOW[mode]] : null,
       guests: list.map(g => ({ k: g.k, n: g.n })),
       // everyone, with or without picks: a phone finds its own name here, or claims one from the pasted list
       roster: [...H.guests.values()].map(g => ({ k: g.k, n: g.n, h: g.src === 'hand' && g.k !== H.hostKey ? 1 : 0, p: g.picks.map(pickLabel) })),
@@ -559,7 +560,7 @@ function fakeVotes(rd) {
 // the start link's list is read once per room; a reload or a second open never doubles anyone
 async function autoList() {
   if (H.guests.size) return;
-  if (!AUTOLIST) { try { const r = await fetch('guests.json', { cache: 'no-store' }); if (r.ok) AUTOLIST = (await unseal(K.key, await r.json())).list || ''; } catch (e) { /* another password, or no list */ } }
+  if (!AUTOLIST) { try { const r = await fetch('guests.json', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); for (const box of Array.isArray(j) ? j : [j]) { try { AUTOLIST = (await unseal(K.key, box)).list || ''; break; } catch (e) { /* not this one */ } } } } catch (e) { /* another password, or no list */ } }
   if (!AUTOLIST || H.guests.size) return;
   bulkRead(AUTOLIST).then(() => {
     if (H.guests.size || !BK.people.some(p => p.items.some(i => i.pick && i.s !== 'gp'))) { if (!H.guests.size) $('#bulk').classList.remove('hide'); return; }
@@ -576,7 +577,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120s').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261120y').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -620,7 +621,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120s');
+    const { openRoom } = await import('./sync.js?v=20261120y');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -665,7 +666,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120s').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120y').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -2811,7 +2812,7 @@ const SET = [
   { m: 'awards', n: 1, l: 'the awards' }, { m: 'bday', n: 1, l: 'the birthday round' }, { m: 'toast', n: 1, l: 'the toast' },
   { m: 'photo', n: 1, l: 'the photo' }, { m: 'list', n: 1, l: 'the playlist, to close' },
 ];
-const SETKEY = { song: '3', odd: '9', steer: '7', twin: '8', hops: '6', bday: '0', awards: 'a', toast: 't', photo: 'p', list: '5', sing: 's' };
+const SETKEY = { song: '2', odd: '3', steer: '4', twin: '5', hops: '6', sing: '7', awards: '8', bday: '9', toast: '0', photo: 'p', list: 'l' };
 // each round counts toward one part of the set
 const SETN = SET.map(() => 0), SETV = 2;
 let setPos = 0, setLast = -1;
@@ -2845,14 +2846,14 @@ function nextUp() {
     // the card is done: replays are an encore, not a loop back to the end
     const enc = SETKEY[mode] && !['list', 'photo', 'toast', 'awards'].includes(mode);
     b.dataset.m = enc ? mode : mode === 'cloud' ? 'song' : 'cloud';
-    b.textContent = enc ? `encore: ${MODES[mode].title} · space` : mode === 'cloud' ? 'that was the night. 3 for an encore.' : 'that was the night. 1 for the cloud.';
+    b.textContent = enc ? `encore: ${MODES[mode].title} · space` : mode === 'cloud' ? 'that was the night. 2 for an encore.' : 'that was the night. 1 for the cloud.';
     return;
   }
   const more = nx.n - SETN[setPos];
   b.dataset.m = nx.m;
   b.textContent = nx.m === mode
     ? `next: ${nx.l}${more > 1 ? `, ${more} more rounds` : ''} · space`
-    : `next up: ${nx.l} · press ${SETKEY[nx.m]}`;
+    : `next up: ${nx.l} · press tab`;
 }
 function enterMode(m, keepAudio) {
   if (!MODES[m]) return;
@@ -2882,7 +2883,7 @@ function enterMode(m, keepAudio) {
   if (m === 'toast') { ++TS.tok; toastEnter(); }
   if (m === 'photo') photoEnter();
   tallySet(m, 'enter');
-  if (changed && !DEMO && !howSeen.has(m)) { howSeen.add(m); toggleHow(true, m); } else toggleHow(false);
+  if (changed && !howSeen.has(m)) { howSeen.add(m); toggleHow(true, m); } else toggleHow(false);
   if (changed && savedAt) saveSoon();
   $('#more-btn').setAttribute('aria-current', String(NEWM.has(m)));
   if (JUKE.has(m) && player && player.ready) cloudShuffle();
@@ -2998,7 +2999,7 @@ function setupNav() {
   $('#more-btn').addEventListener('click', e => { e.stopPropagation(); const o = $('#more').classList.toggle('hide'); $('#more-btn').setAttribute('aria-expanded', String(!o)); });
   document.addEventListener('click', e => { if (!e.target.closest('#more')) { $('#more').classList.add('hide'); $('#more-btn').setAttribute('aria-expanded', 'false'); } });
   $('#team-merge').addEventListener('click', mergeTeams);
-  const keys = { 1: 'cloud', 2: 'walk', 3: 'song', 5: 'list', 6: 'hops', 7: 'steer', 8: 'twin', 9: 'odd', 0: 'bday', a: 'awards', t: 'toast', p: 'photo', s: 'sing' };
+  const keys = { 1: 'cloud', 2: 'song', 3: 'odd', 4: 'steer', 5: 'twin', 6: 'hops', 7: 'sing', 8: 'awards', 9: 'bday', 0: 'toast', p: 'photo', l: 'list', w: 'walk', a: 'awards', t: 'toast', s: 'sing' };
   $('#next-up').addEventListener('click', () => { const m = $('#next-up').dataset.m; if (m) enterMode(m); });
   nextUp();
   document.addEventListener('click', e => { const b = e.target.closest('#host button'); if (b && e.detail) b.blur(); }, true);
@@ -3011,6 +3012,7 @@ function setupNav() {
     if (!$('#bigjoin').classList.contains('hide') && !['m', 'f', 'ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); toggleBig(false); if (e.key === 'g') toggleJoin(true); return; }
     if (!$('#howcard').classList.contains('hide') && !['m', 'f', 'ArrowUp', 'ArrowDown'].includes(e.key) && !keys[e.key]) { e.preventDefault(); toggleHow(false); return; }
     if (e.key === 'h') { toggleHow(); return; }
+    if (e.key === 'Tab') { e.preventDefault(); const b = $('#next-up'), m = b && b.dataset.m; if (m && m !== mode) { if (!busy()) enterMode(m); else footNote('finish this round first: space'); } else { const f = GO[mode]; if (f) f(); } return; }
     if (e.key === 'm') { player.muted = !player.muted; if (player.master) player.master.gain.value = player.muted ? 0 : vol; footNote(player.muted ? 'sound off · m turns it on' : 'sound on'); return; }
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); vol = clamp(vol + (e.key === 'ArrowUp' ? .1 : -.1), 0, 1); if (player.master && !player.muted) player.master.gain.value = vol; footNote(`volume ${Math.round(vol * 100)}`); return; }
     if (keys[e.key]) {
@@ -3603,6 +3605,7 @@ async function guestMain() {
     else if (!s && netFail) st.textContent = "found the room, but this network can't reach the screen. join the house wifi, then tap reload.";
     else if (!s) st.textContent = waited > 14 ? `no screen yet. the screen shows its room code at the top left. if it isn't ${K.code}, retype the password. if it is, join the house wifi and reload.` : 'looking for the screen';
     else st.textContent = `the screen: ${modeNames[s.mode] || s.mode}`;
+    { const hb = $('#g-how'), hw = s && s.hw; hb.classList.toggle('hide', !hw); const sig = hw ? hw.join('|') : ''; if (hb.dataset.sig !== sig) { hb.dataset.sig = sig; hb.textContent = ''; if (hw) { hb.append(el('p', { class: 'field-h' }, `how ${hw[0]} works`)); const ol = el('ol', {}); hw.slice(1).forEach(t => ol.append(el('li', {}, String(t)))); hb.append(ol); } } }
     $('#g-fix').classList.toggle('hide', !stuck);
     $('#g-bigcode').classList.toggle('hide', !stuck);
     setText('#g-bigcode', stuck ? `your code: ${K.code}` : '');
@@ -3731,39 +3734,46 @@ async function guestMain() {
     if (finMode !== m) { finMode = m; setTimeout(() => box.scrollIntoView({ block: m === 'awards' ? 'nearest' : 'start', behavior: 'smooth' }), 120); }
   }
   function drawKeep(kp, c) {
-    const cv = $('#gk-map'), w = cv.clientWidth || 300, h = Math.round(w * .72), dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const cv = $('#gk-map'), w = cv.clientWidth || 300, h = 300, dpr = Math.min(window.devicePixelRatio || 1, 3);
     cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
     const cs = getComputedStyle(document.documentElement), col = k => cs.getPropertyValue('--' + k).trim();
-    const sx = w / 2 * .78, sy = h / 2 * .74, ax = Math.min(sx, sy * 1.7), ay = Math.min(sy, sx);
-    const P = kp.xy.map(p => [w / 2 + p[0] * ax, h / 2 + p[1] * ay]);
-    const me = c.i >= 0 ? P[c.i] : c.home && kp.h >= 0 ? P[kp.h] : null, home = kp.h >= 0 ? P[kp.h] : null;
-    x.lineWidth = 1.25; x.strokeStyle = col('ice');
-    if (me) for (const j of c.tj || []) if (P[j]) { x.beginPath(); x.moveTo(me[0], me[1]); x.lineTo(P[j][0], P[j][1]); x.stroke(); }
-    P.forEach((p, j) => { if (p === me || p === home) return; x.fillStyle = (c.tj || []).includes(j) ? col('ice') : col('faint'); x.beginPath(); x.arc(p[0], p[1], 3.5, 0, 6.2832); x.fill(); });
-    const ring = (p, color, r) => { x.strokeStyle = color; x.lineWidth = 1.5; x.beginPath(); x.arc(p[0], p[1], r, 0, 6.2832); x.stroke(); };
-    if (home && home !== me) { x.fillStyle = col('mint'); x.beginPath(); x.arc(home[0], home[1], 4.5, 0, 6.2832); x.fill(); ring(home, col('mint'), 10); }
-    if (me) { x.fillStyle = col('ink'); x.beginPath(); x.arc(me[0], me[1], 6, 0, 6.2832); x.fill(); ring(me, col('mint'), 12); ring(me, col('mint'), 19); }
-    x.font = '500 12px "IBM Plex Mono", ui-monospace, monospace'; x.textBaseline = 'middle';
-    const boxes = P.map(p => [p[0] - 5, p[1] - 5, 10, 10]);
-    const label = (p, t, color, r) => {
-      const tw = x.measureText(t).width, hh = 14;
-      const d = r * .8 + 6;
-      const cand = [[p[0] + r + 6, p[1]], [p[0] - r - 6 - tw, p[1]], [p[0] - tw / 2, p[1] - r - 10], [p[0] - tw / 2, p[1] + r + 10], [p[0] + d, p[1] - d], [p[0] + d, p[1] + d], [p[0] - d - tw, p[1] - d], [p[0] - d - tw, p[1] + d]];
-      let best = cand[0], bo = Infinity;
-      for (const q of cand) {
-        let o = q[0] < 4 || q[0] + tw > w - 4 || q[1] - hh / 2 < 2 || q[1] + hh / 2 > h - 2 ? 1e6 : 0;
-        for (const b of boxes) o += Math.max(0, Math.min(q[0] + tw, b[0] + b[2]) - Math.max(q[0], b[0])) * Math.max(0, Math.min(q[1] + hh / 2, b[1] + b[3]) - Math.max(q[1] - hh / 2, b[1]));
-        if (o < bo) { bo = o; best = q; }
-        if (!o) break;
-      }
-      boxes.push([best[0], best[1] - hh / 2, tw, hh]);
-      // a crowded map can leave no clear spot; a halo in the map color keeps the name readable over a dot
-      x.lineJoin = 'round'; x.lineWidth = 4; x.strokeStyle = col('night'); x.strokeText(t, best[0], best[1]);
-      x.fillStyle = color; x.fillText(t, best[0], best[1]);
-    };
-    if (me) { boxes.push([me[0] - 20, me[1] - 20, 40, 40]); label(me, c.home ? 'you, the birthday baby' : 'you', col('ink'), 20); }
-    if (home && home !== me) { boxes.push([home[0] - 11, home[1] - 11, 22, 22]); label(home, 'the birthday baby', col('mint'), 11); }
+    const mine = lastShow && (lastShow.roster || []).find(g => g.k === 'p' + me.id);
+    const pk = (mine && mine.p.length ? mine.p : me.picks.map(p => p.k === 't' ? p.tt : p.an)).map(s => String(s).split(' · ')[0]).slice(0, 3);
+    // you in the middle; what you brought, who you sit next to, and what you take home around you
+    const N = pk.map(t => ({ k: 'you brought', t, c: 'ink' }));
+    if (c.tw) N.push({ k: 'taste twin', t: c.tw, c: 'ice' });
+    if (c.gf) N.push({ k: 'a song for you', t: String(c.gf[0]), c: 'mint' });
+    if (c.nw) N.push({ k: c.i < 0 ? 'holds the room together' : 'new for you', t: String(c.nw[0]), c: 'rose' });
+    if (c.hp != null) N.push({ k: c.hp === 0 ? 'zero hops away' : `${c.hp} hop${c.hp === 1 ? '' : 's'} away`, t: 'birthday baby', c: 'mint', ring: 1 });
+    if (c.home) N.push({ k: `${c.home} road${c.home === 1 ? '' : 's'}`, t: 'led to you', c: 'mint', ring: 1 });
+    // two columns, one row each: a label owns its own band, so nothing can sit on anything else
+    const L = Math.ceil(N.length / 2), rows = Math.max(L, 1), rh = 86, hh = rows * rh + 24, cx = w / 2, cy = hh / 2;
+    cv.style.height = hh + 'px'; cv.height = Math.round(hh * dpr); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.fillStyle = col('faint');
+    for (const p of kp.xy) { const px = cx + p[0] * w * .46, py = cy + p[1] * hh * .46; if (Math.abs(px - cx) < w * .04) x.fillRect(Math.round(px), Math.round(py), 3, 3); }
+    N.forEach((o, j) => { const left = j < L, r = left ? j : j - L, cnt = left ? L : N.length - L; o.x = w * (left ? .23 : .77); o.y = 26 + (hh - 24) * (r + .5) / cnt - rh / 2 + 18; });
+    x.lineWidth = 1.5;
+    // wires run down a rail beside the middle, then straight across to each square, so no wire crosses a label
+    for (const o of N) { const bx = Math.round(cx + (o.x < cx ? -1 : 1) * w * .055) + .5, oy = Math.round(o.y) + .5; x.strokeStyle = col(o.c); x.beginPath(); x.moveTo(bx, cy); x.lineTo(bx, oy); x.lineTo(o.x, oy); x.stroke(); }
+    for (const o of N) {
+      x.fillStyle = col(o.c); x.fillRect(Math.round(o.x - 6), Math.round(o.y - 6), 12, 12);
+      if (o.ring) { x.strokeStyle = col(o.c); x.strokeRect(Math.round(o.x - 11) + .5, Math.round(o.y - 11) + .5, 22, 22); }
+    }
+    x.fillStyle = col('night'); x.fillRect(cx - 19, cy - 19, 38, 38);
+    x.strokeStyle = col('mint'); x.strokeRect(Math.round(cx - 17) + .5, Math.round(cy - 17) + .5, 34, 34);
+    x.fillStyle = col('ink'); x.fillRect(Math.round(cx - 10), Math.round(cy - 10), 20, 20);
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    const put = (t, px, py, font, color) => { x.font = font; x.lineWidth = 5; x.strokeStyle = col('night'); x.strokeText(t, px, py); x.fillStyle = color; x.fillText(t, px, py); };
+    put('you', cx, cy + 33, '600 13px "Instrument Sans", system-ui, sans-serif', col('ink'));
+    const f1 = '500 11px "IBM Plex Mono", ui-monospace, monospace', f2 = '600 14px "Instrument Sans", system-ui, sans-serif', maxW = w * .41;
+    for (const o of N) {
+      x.font = f2; let t = o.t;
+      while (t.length > 4 && x.measureText(t).width > maxW) t = t.slice(0, -2).trimEnd() + '…';
+      x.font = f1; let kk = o.k;
+      while (kk.length > 4 && x.measureText(kk).width > maxW) kk = kk.slice(0, -2).trimEnd() + '…';
+      put(kk, o.x, o.y + 22, f1, col('dim')); put(t, o.x, o.y + 40, f2, col(o.c));
+    }
   }
   $('#g-ask-send').addEventListener('click', () => {
     const p = apk.get()[0];
@@ -3794,7 +3804,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120s');
+    const { openRoom } = await import('./sync.js?v=20261120y');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

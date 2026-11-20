@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css?v=20261120s">
+<link rel="stylesheet" href="party.css?v=20261120y">
 </head>
 <body>
 <a id="boot-slow" href="">still loading. if nothing shows up, tap here to try again.</a>
@@ -36,23 +36,23 @@
   <nav id="modes" aria-label="modes">
     <div class="grp"><span class="gl">see</span>
       <button data-mode="cloud"><b>1</b>the cloud</button>
-      <button data-mode="walk"><b>2</b>the walk</button>
-      <button data-mode="list"><b>5</b>the playlist</button>
+      <button data-mode="walk"><b>w</b>the walk</button>
+      <button data-mode="list"><b>l</b>the playlist</button>
       <button data-mode="join" class="join-btn"><b>j</b>join</button>
     </div>
     <div class="grp"><span class="gl">play</span>
-      <button data-mode="song"><b>3</b>whose song</button>
+      <button data-mode="song"><b>2</b>whose song</button>
+      <button data-mode="odd"><b>3</b>odd one out</button>
+      <button data-mode="steer"><b>4</b>steer</button>
+      <button data-mode="twin"><b>5</b>taste twin</button>
       <button data-mode="hops"><b>6</b>how many hops</button>
-      <button data-mode="steer"><b>7</b>steer</button>
-      <button data-mode="twin"><b>8</b>taste twin</button>
-      <button data-mode="odd"><b>9</b>odd one out</button>
-      <button data-mode="sing"><b>s</b>singalong</button>
+      <button data-mode="sing"><b>7</b>singalong</button>
       <button id="more-btn" class="hide" aria-expanded="false" aria-controls="more">more games</button>
     </div>
     <div class="grp"><span class="gl">finale</span>
-      <button data-mode="awards"><b>a</b>the awards</button>
-      <button data-mode="bday"><b>0</b>the birthday round</button>
-      <button data-mode="toast"><b>t</b>the toast</button>
+      <button data-mode="awards"><b>8</b>the awards</button>
+      <button data-mode="bday"><b>9</b>the birthday round</button>
+      <button data-mode="toast"><b>0</b>the toast</button>
       <button data-mode="photo"><b>p</b>the photo</button>
     </div>
     <div id="more" class="hide">
@@ -68,6 +68,7 @@
   <section id="p-cloud" class="panel">
     <div class="facts" id="cloud-facts"></div>
     <p class="now" id="cloud-now"></p>
+    <p id="legend" aria-label="how to read the map"><span><i class="lg-dot"></i>one of you</span><span><i class="lg-pk"></i>your picks</span><span><i class="lg-far"></i>artists near your music</span><span><i class="lg-ln"></i>closest taste</span><span><i class="lg-mid"></i>middle of the room</span><span><i class="lg-wild"></i>the wildcard</span></p>
   </section>
 
   <section id="col" class="panel">
@@ -164,10 +165,9 @@
   </aside>
 
   <footer id="foot">
-    <p id="legend" aria-label="how to read the map"><span><i class="lg-dot"></i>one of you</span><span><i class="lg-pk"></i>your picks</span><span><i class="lg-far"></i>artists near your music</span><span><i class="lg-ln"></i>closest taste</span><span><i class="lg-mid"></i>middle of the room</span><span><i class="lg-wild"></i>the wildcard</span></p>
     <span id="foot-stats"></span>
     <button id="next-up" type="button" class="nx"></button>
-    <span class="keys"><kbd>space</kbd> go <kbd>n</kbd> next <kbd>h</kbd> how it works <kbd>j</kbd> join code <kbd>g</kbd> guests <kbd>m</kbd> mute <kbd>f</kbd> full screen</span>
+    <span class="keys"><kbd>tab</kbd> next game <kbd>space</kbd> go <kbd>n</kbd> next <kbd>h</kbd> how it works <kbd>j</kbd> join code <kbd>g</kbd> guests <kbd>m</kbd> mute <kbd>f</kbd> full screen</span>
   </footer>
 
   <div id="sound" class="hide">
@@ -203,6 +203,7 @@
     <h1 id="g-hi"></h1>
     <ul id="g-mine" class="mine"></ul>
     <p class="note" id="g-status"></p>
+    <div id="g-how" class="g-how hide"></div>
     <p class="g-bigcode hide" id="g-bigcode"></p>
     <div class="row g-fix hide" id="g-fix"><button class="pill small" id="g-retype" type="button">retype the password</button><button class="pill small" id="g-reload" type="button">reload</button></div>
     <p class="g-team" id="g-team"></p>
@@ -213,7 +214,7 @@
       <canvas id="gk-map" aria-hidden="true"></canvas>
       <ul id="gk-facts" class="mine"></ul>
       <ol id="gk-bag" class="gf-list hide"></ol>
-      <p class="note">screenshot it to keep it.</p>
+      <p class="note">this is yours from tonight: you in the middle, what you brought, who sits closest to you, and two things to listen to next. screenshot it to keep it.</p>
     </section>
     <div id="g-ask" class="hide">
       <h2 id="g-ask-q"></h2>
@@ -263,6 +264,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=20261120s"></script>
+<script type="module" src="app.js?v=20261120y"></script>
 </body>
 </html>

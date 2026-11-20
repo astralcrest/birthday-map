@@ -1,4 +1,4 @@
-// one sound at a time: fade the old one out, then fade the new one in
+// one sound at a time: the new one fades in as the old one fades out
 export class Player {
   constructor() {
     this.ctx = null;
@@ -11,6 +11,7 @@ export class Player {
     this.freq = null;
     this.wave = null;
     this.muted = false;
+    this.levelOf = null;
   }
   get ready() { return !!this.ctx && this.ctx.state === 'running'; }
   async unlock() {
@@ -21,7 +22,11 @@ export class Player {
       this.an = this.ctx.createAnalyser();
       this.an.fftSize = 1024;
       this.an.smoothingTimeConstant = 0.78;
-      this.master.connect(this.an); this.an.connect(this.ctx.destination);
+      // a limiter after the master: deezer clips run hot and most peak over full scale
+      this.lim = this.ctx.createDynamicsCompressor();
+      this.lim.threshold.value = -6; this.lim.knee.value = 0; this.lim.ratio.value = 20;
+      this.lim.attack.value = .003; this.lim.release.value = .25;
+      this.master.connect(this.lim); this.lim.connect(this.an); this.an.connect(this.ctx.destination);
       this.freq = new Uint8Array(this.an.frequencyBinCount);
       this.wave = new Uint8Array(this.an.fftSize);
       for (let i = 0; i < 2; i++) {
@@ -51,36 +56,49 @@ export class Player {
     g.setValueAtTime(g.value, t);
     g.linearRampToValueAtTime(to, t + sec);
   }
+  // the next clip starts on the other deck while this one fades: no silent gap between stops
   async play(url, { fadeIn = 1.4, fadeOut = 0.9, at = 0 } = {}) {
     if (!this.ctx || !url) return false;
     const my = ++this.token;
-    await this.stop(fadeOut, true);
-    if (my !== this.token) return false;
-    const i = 1 - this.last;
+    const old = this.cur;
+    const i = old >= 0 ? 1 - old : 1 - this.last;
     this.last = i;
     const el = this.els[i];
+    el.dataset.tok = String(my);
+    const g = this.gains[i].gain;
+    g.cancelScheduledValues(this.ctx.currentTime);
+    g.setValueAtTime(0, this.ctx.currentTime);
     el.src = url;
     try {
       el.currentTime = at;
-      this.gains[i].gain.value = 0;
       await el.play();
     } catch (e) {
       return false;
     }
-    if (my !== this.token) { el.pause(); return false; }
+    if (my !== this.token) { if (el.dataset.tok === String(my)) el.pause(); return false; }
+    for (let j = 0; j < this.els.length; j++) if (j !== i) this.fadeAway(j, fadeOut);
     this.cur = i;
-    this.ramp(i, this.muted ? 0 : 1, fadeIn);
+    // level each clip toward -10 LUFS from deezer's gain figure; unknown clips sit a little low behind the limiter
+    const gn = this.levelOf ? this.levelOf(url) : null;
+    const trim = gn == null ? .8 : Math.min(1.5, Math.max(.3, 10 ** ((-10 - gn) / 20)));
+    this.ramp(i, this.muted ? 0 : trim, fadeIn);
     return true;
+  }
+  fadeAway(j, sec) {
+    const e = this.els[j], t = e.dataset.tok;
+    if (e.paused) return;
+    this.ramp(j, 0, sec);
+    setTimeout(() => { if (this.cur !== j && e.dataset.tok === t) e.pause(); }, sec * 1000 + 40);
   }
   async stop(fadeOut = 0.9, keepToken = false) {
     if (!keepToken) this.token++;
     if (!this.ctx || this.cur < 0) return;
-    const i = this.cur, el = this.els[i];
+    const i = this.cur, el = this.els[i], t = el.dataset.tok;
     this.cur = -1;
     if (el.paused) return;
     this.ramp(i, 0, fadeOut);
     await new Promise(r => setTimeout(r, fadeOut * 1000 + 40));
-    el.pause();
+    if (el.dataset.tok === t && this.cur !== i) el.pause();
   }
   get el() { return this.cur >= 0 ? this.els[this.cur] : null; }
   get playing() { const e = this.el; return !!e && !e.paused; }

@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css">
+<link rel="stylesheet" href="party.css?v=20261120c">
 </head>
 <body>
 
@@ -36,7 +36,6 @@
     <div class="grp"><span class="gl">see</span>
       <button data-mode="cloud"><b>1</b>the cloud</button>
       <button data-mode="walk"><b>2</b>the walk</button>
-      <button data-mode="pairs"><b>4</b>pairs</button>
       <button data-mode="list"><b>5</b>the playlist</button>
       <button data-mode="join" class="join-btn"><b>j</b>join</button>
     </div>
@@ -46,8 +45,14 @@
       <button data-mode="steer"><b>7</b>steer</button>
       <button data-mode="twin"><b>8</b>taste twin</button>
       <button data-mode="odd"><b>9</b>odd one out</button>
+      <button data-mode="sing"><b>s</b>singalong</button>
+      <button id="more-btn" class="hide" aria-expanded="false" aria-controls="more">more games</button>
+    </div>
+    <div class="grp"><span class="gl">finale</span>
+      <button data-mode="awards"><b>a</b>the awards</button>
       <button data-mode="bday"><b>0</b>the birthday round</button>
-      <button id="more-btn" aria-expanded="false" aria-controls="more">more games</button>
+      <button data-mode="toast"><b>t</b>the toast</button>
+      <button data-mode="photo"><b>p</b>the photo</button>
     </div>
     <div id="more" class="hide">
       <button data-mode="nth">name that hop</button>
@@ -96,14 +101,22 @@
     <div class="ctl">
       <button class="pill solid" id="list-play">play the tour</button>
       <button class="pill" id="list-copy">copy as text</button>
-      <button class="pill" id="list-spotify" disabled title="needs a spotify client id, see README.txt">spotify playlist: needs a client id</button>
+      <button class="pill hide" id="list-spotify" disabled title="needs a spotify client id, see README.txt">spotify playlist: needs a client id</button>
     </div>
     <p class="fine" id="list-how">each pick sits next to the one fewest hops away (nearest neighbor, then 2-opt).</p>
     <ol id="list-ol" class="tour"></ol>
   </section>
 
+  <div id="lobby" class="hide" aria-hidden="true">
+    <div class="qr-wrap"><canvas id="qr2" width="10" height="10"></canvas></div>
+    <p class="big">scan to join</p>
+    <p class="code" id="lobby-code"></p>
+    <p class="how">host: j opens the guest list</p>
+  </div>
+
   <aside id="join" class="hide" aria-label="join">
     <div class="qr-wrap"><canvas id="qr" width="10" height="10" aria-label="join code"></canvas></div>
+    <p class="jcode" id="join-code"></p>
     <p class="link" id="join-link"></p>
     <p class="note" id="join-pwnote">then the password. ask the host.</p>
     <div class="row"><button class="pill small" id="join-pwqr" aria-pressed="false">password in the code: off</button></div>
@@ -126,7 +139,8 @@
 
   <footer id="foot">
     <span id="foot-stats"></span>
-    <span class="keys">1&ndash;0 modes &middot; n next &middot; space go &middot; j join &middot; f full screen</span>
+    <button id="next-up" type="button" class="nx"></button>
+    <span class="keys">space go &middot; n next &middot; j join &middot; k save the poster &middot; f full screen</span>
   </footer>
 
   <div id="sound" class="hide">
@@ -144,8 +158,13 @@
 
   <section id="g-form" class="g-sec">
     <h1>put yourself on the map</h1>
-    <label class="field"><span>your name</span><input id="g-name" type="text" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="first name is plenty"></label>
-    <p class="field-h">three picks. one is enough. a song, an artist or a link.</p>
+    <div id="g-claim" class="hide">
+      <p class="field-h">on the list? tap your name.</p>
+      <div id="g-claim-opts" class="opts"></div>
+      <p class="field-h">not there? type it.</p>
+    </div>
+    <label class="field"><span>your name</span><input id="g-name" type="text" maxlength="24" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="first name is plenty"></label>
+    <p class="field-h">up to three picks: a song, an artist or a link. none is fine too.</p>
     <div id="g-picks" class="picker"></div>
     <div id="g-gp" class="picker gp"></div>
     <button class="pill solid wide" id="g-send" disabled>put me on the map</button>
@@ -156,6 +175,8 @@
     <h1 id="g-hi"></h1>
     <ul id="g-mine" class="mine"></ul>
     <p class="note" id="g-status"></p>
+    <p class="g-bigcode hide" id="g-bigcode"></p>
+    <div class="row g-fix hide" id="g-fix"><button class="pill small" id="g-retype" type="button">retype the password</button><button class="pill small" id="g-reload" type="button">reload</button></div>
     <p class="g-team" id="g-team"></p>
     <div id="g-ask" class="hide">
       <h2 id="g-ask-q"></h2>
@@ -190,8 +211,8 @@
 <div id="bulk" class="hide" role="dialog" aria-modal="true" aria-label="paste a list">
   <div class="hand-in bulk-in">
     <h2>paste a list</h2>
-    <p class="note">one person per line or csv row. name first, then up to three songs or artists. emails and phone numbers are ignored.</p>
-    <textarea id="b-text" rows="5" spellcheck="false" aria-label="list" placeholder="maya, pink + white - frank ocean, radiohead, sza"></textarea>
+    <p class="note">one person per line: name | forever song | song at 16 | right-now artist. a song is title - artist. a dash leaves a slot empty. answers pasted the way people texted them work too, and so does a csv export.</p>
+    <textarea id="b-text" rows="6" spellcheck="false" aria-label="list" placeholder="maya | pink + white - frank ocean | mr. brightside - the killers | sza&#10;theo | - | jolene - dolly parton | -&#10;the host | ... (marks the birthday baby)"></textarea>
     <div class="row">
       <button class="pill solid small" id="b-read" type="button">read it</button>
       <label class="pill small file">upload a csv<input type="file" id="b-file" accept=".csv,.tsv,.txt,text/csv,text/plain"></label>
@@ -205,6 +226,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20261120c"></script>
 </body>
 </html>

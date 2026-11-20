@@ -1,5 +1,5 @@
 // the related-artist map: undirected links (a link means one of the two lists the other as related)
-import * as M from './music.js';
+import * as M from './music.js?v=20261120c';
 
 export const CAP = 6;          // hop cap for paths
 export const FAR = CAP + 1;    // distance used for "not within reach"
@@ -189,7 +189,8 @@ export function facts(guests, D) {
     while (x !== undefined && par.has(x)) { count.set(x, (count.get(x) || 0) + 1); x = par.get(x); }
   }
   let bridge = null, bc = 0;
-  for (const [k, v] of count) if (v > bc) { bc = v; bridge = k; }
+  // ties go to the better-known artist, so the answer does not depend on who joined first
+  for (const [k, v] of count) if (v > bc || (v === bc && M.artistFans(k) > M.artistFans(bridge))) { bc = v; bridge = k; }
   out.bridge = bridge; out.bridgeCount = bc;
   return out;
 }

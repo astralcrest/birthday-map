@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261120y';
-import * as Gr from './graph.js?v=20261120y';
-import { Player } from './audio.js?v=20261120y';
+import * as M from './music.js?v=20261121a';
+import * as Gr from './graph.js?v=20261121a';
+import { Player } from './audio.js?v=20261121a';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -440,7 +440,7 @@ function publish() {
     const list = guestList();
     const s = {
       v: 1, mode, code: K.code, t: Date.now(),
-      hw: HOW[mode] ? [MODES[mode].title, ...HOW[mode]] : null,
+      hw: HOW[mode] ? [MODES[mode].title, ...HOW[mode]] : null, hs: SCI[mode] || null,
       guests: list.map(g => ({ k: g.k, n: g.n })),
       // everyone, with or without picks: a phone finds its own name here, or claims one from the pasted list
       roster: [...H.guests.values()].map(g => ({ k: g.k, n: g.n, h: g.src === 'hand' && g.k !== H.hostKey ? 1 : 0, p: g.picks.map(pickLabel) })),
@@ -577,7 +577,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261120y').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261121a').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -621,7 +621,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261120y');
+    const { openRoom } = await import('./sync.js?v=20261121a');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -666,7 +666,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261120y').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121a').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -2548,6 +2548,18 @@ const DRAW = {
   sing: (c, t) => drawSong(c, t),
 };
 // how each game works, in three short lines a first-timer can follow
+// one line of the how behind each game, in plain words
+const HOP = 'a hop is one \u201crelated artist\u201d link from a music service: the people who play one tend to play the other. it is listening habits, not the sound itself.';
+const SCI = {
+  cloud: 'two artists are linked when a music service lists them as related: the people who play one tend to play the other. we count the links between your picks and everyone else\u2019s, then lay the room out so fewer links means closer dots. it is listening habits, not the sound itself.',
+  walk: HOP + ' the path is the shortest chain of links we could find.',
+  steer: HOP, hops: HOP + ' the answer is the shortest chain we could find.',
+  bday: HOP + ' closest means the fewest hops.',
+  twin: 'your taste twin is the person whose picks are the fewest \u201crelated artist\u201d links from yours.',
+  odd: 'the odd song comes from someone on the far half of the map from that person, so your ear has something to go on.',
+  awards: 'the middle of the room is the fewest links from everyone else. the wildcard is the most. the bridge is the artist on the most shortest paths between you.',
+  pairs: HOP,
+};
 const HOW = {
   cloud: ['every dot is one of you.', 'your dot sits next to the people whose music is most like yours.', 'a line joins you to your two nearest people.'],
   walk: ['we pick two of you.', 'we hop from one person\u2019s music to the other\u2019s, one similar artist at a time.', 'fewer hops means closer taste. just watch and listen.'],
@@ -2580,8 +2592,9 @@ function toggleHow(on, m = mode) {
   setText('#hw-title', MODES[m].title);
   const ol = $('#hw-steps'); ol.textContent = '';
   HOW[m].forEach(t => ol.append(el('li', {}, t)));
+  setText('#hw-sci', SCI[m] ? 'the science: ' + SCI[m] : '');
   box.classList.remove('hide');
-  howT = setTimeout(() => box.classList.add('hide'), 14000);
+  howT = setTimeout(() => box.classList.add('hide'), 22000);
 }
 const MODES = {
   cloud: { title: 'the cloud', sub: 'everyone here, placed by taste.', go: '' },
@@ -3605,7 +3618,7 @@ async function guestMain() {
     else if (!s && netFail) st.textContent = "found the room, but this network can't reach the screen. join the house wifi, then tap reload.";
     else if (!s) st.textContent = waited > 14 ? `no screen yet. the screen shows its room code at the top left. if it isn't ${K.code}, retype the password. if it is, join the house wifi and reload.` : 'looking for the screen';
     else st.textContent = `the screen: ${modeNames[s.mode] || s.mode}`;
-    { const hb = $('#g-how'), hw = s && s.hw; hb.classList.toggle('hide', !hw); const sig = hw ? hw.join('|') : ''; if (hb.dataset.sig !== sig) { hb.dataset.sig = sig; hb.textContent = ''; if (hw) { hb.append(el('p', { class: 'field-h' }, `how ${hw[0]} works`)); const ol = el('ol', {}); hw.slice(1).forEach(t => ol.append(el('li', {}, String(t)))); hb.append(ol); } } }
+    { const hb = $('#g-how'), hw = s && s.hw; hb.classList.toggle('hide', !hw); const sig = hw ? hw.join('|') + (s.hs || '') : ''; if (hb.dataset.sig !== sig) { hb.dataset.sig = sig; hb.textContent = ''; if (hw) { hb.append(el('p', { class: 'field-h' }, `how ${hw[0]} works`)); const ol = el('ol', {}); hw.slice(1).forEach(t => ol.append(el('li', {}, String(t)))); hb.append(ol); if (s.hs) { const d = el('details', {}, el('summary', {}, 'the science')); d.append(el('p', {}, String(s.hs))); hb.append(d); } } } }
     $('#g-fix').classList.toggle('hide', !stuck);
     $('#g-bigcode').classList.toggle('hide', !stuck);
     setText('#g-bigcode', stuck ? `your code: ${K.code}` : '');
@@ -3744,7 +3757,7 @@ async function guestMain() {
     const N = pk.map(t => ({ k: 'you brought', t, c: 'ink' }));
     if (c.tw) N.push({ k: 'taste twin', t: c.tw, c: 'ice' });
     if (c.gf) N.push({ k: 'a song for you', t: String(c.gf[0]), c: 'mint' });
-    if (c.nw) N.push({ k: c.i < 0 ? 'holds the room together' : 'new for you', t: String(c.nw[0]), c: 'rose' });
+    if (c.nw) N.push({ k: c.i < 0 ? 'links this room' : 'new for you', t: String(c.nw[0]), c: 'rose' });
     if (c.hp != null) N.push({ k: c.hp === 0 ? 'zero hops away' : `${c.hp} hop${c.hp === 1 ? '' : 's'} away`, t: 'birthday baby', c: 'mint', ring: 1 });
     if (c.home) N.push({ k: `${c.home} road${c.home === 1 ? '' : 's'}`, t: 'led to you', c: 'mint', ring: 1 });
     // two columns, one row each: a label owns its own band, so nothing can sit on anything else
@@ -3804,7 +3817,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261120y');
+    const { openRoom } = await import('./sync.js?v=20261121a');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

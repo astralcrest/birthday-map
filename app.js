@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261121c';
-import * as Gr from './graph.js?v=20261121c';
-import { Player } from './audio.js?v=20261121c';
+import * as M from './music.js?v=20261121f';
+import * as Gr from './graph.js?v=20261121f';
+import { Player } from './audio.js?v=20261121f';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -577,7 +577,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261121c').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261121f').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -621,7 +621,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261121c');
+    const { openRoom } = await import('./sync.js?v=20261121f');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -666,7 +666,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121c').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121f').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -3817,7 +3817,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261121c');
+    const { openRoom } = await import('./sync.js?v=20261121f');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

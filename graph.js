@@ -1,5 +1,5 @@
 // the related-artist map: undirected links (a link means one of the two lists the other as related)
-import * as M from './music.js?v=20261121f';
+import * as M from './music.js?v=20261121g';
 
 export const CAP = 6;          // hop cap for paths
 export const FAR = CAP + 1;    // distance used for "not within reach"

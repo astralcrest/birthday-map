@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261121f';
-import * as Gr from './graph.js?v=20261121f';
-import { Player } from './audio.js?v=20261121f';
+import * as M from './music.js?v=20261121g';
+import * as Gr from './graph.js?v=20261121g';
+import { Player } from './audio.js?v=20261121g';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -443,7 +443,7 @@ function publish() {
       hw: HOW[mode] ? [MODES[mode].title, ...HOW[mode]] : null, hs: SCI[mode] || null,
       guests: list.map(g => ({ k: g.k, n: g.n })),
       // everyone, with or without picks: a phone finds its own name here, or claims one from the pasted list
-      roster: [...H.guests.values()].map(g => ({ k: g.k, n: g.n, h: g.src === 'hand' && g.k !== H.hostKey ? 1 : 0, p: g.picks.map(pickLabel) })),
+      roster: [...H.guests.values()].map(g => ({ k: g.k, n: g.n, h: g.src !== 'hand' ? 0 : g.k === H.hostKey ? 2 : 1, p: g.picks.map(pickLabel) })),
       scores: H.scores,
       round: RD ? { id: RD.id, type: RD.type, open: RD.open, q: RD.q, opts: RD.opts || null, res: RD.res || null } : null,
       ask: RD && RD.open && RD.ask ? RD.ask : null,
@@ -472,9 +472,9 @@ function keepsakes() {
       if (g.src !== 'p2p') continue;
       const i = DV.idx.has(g.k) ? DV.idx.get(g.k) : -1, pt = H.scores[g.k] || 0;
       const o = { n: g.k === H.hostKey ? 'the birthday baby' : g.n, i, pt, rk: pt > 0 ? 1 + pts.filter(v => v > pt).length : 0 };
+      if (i >= 0 && L.length >= 3) { const tj = twinsOf(i).slice(0, 2); if (tj.length) { o.tj = tj; o.tw = andList(tj.map(j => L[j].k === H.hostKey ? 'the birthday baby' : L[j].n)); } }
       if (g.k === H.hostKey) { const reach = rows.filter(r => r.hops != null).length; if (reach) o.home = reach; }
       else {
-        if (i >= 0 && L.length >= 3) { const tj = twinsOf(i).slice(0, 2); if (tj.length) { o.tj = tj; o.tw = andList(tj.map(j => L[j].k === H.hostKey ? 'the birthday baby' : L[j].n)); } }
         if (hops.get(g.k) != null) o.hp = hops.get(g.k);
         if (i >= 0 && i === f.center) o.sp = 'the middle of the room';
         else if (i >= 0 && i === f.outlier) o.sp = 'the wildcard';
@@ -577,7 +577,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261121f').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261121g').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -621,7 +621,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261121f');
+    const { openRoom } = await import('./sync.js?v=20261121g');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -666,7 +666,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121f').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121g').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -3592,15 +3592,15 @@ async function guestMain() {
   });
   const renderClaim = () => {
     const box = $('#g-claim');
-    const list = lastShow && !$('#g-form').classList.contains('hide') ? (lastShow.roster || []).filter(g => g.h) : [];
+    const list = lastShow && !$('#g-form').classList.contains('hide') ? (lastShow.roster || []).filter(g => g.h).sort((x, y) => x.h - y.h) : [];
     box.classList.toggle('hide', !list.length);
-    const wrap = $('#g-claim-opts'), sig = list.map(g => g.k).join(',');
+    const wrap = $('#g-claim-opts'), sig = list.map(g => g.k + g.h).join(',');
     if (wrap.dataset.sig === sig) return;
     wrap.dataset.sig = sig; wrap.textContent = '';
     for (const g of list) wrap.append(el('button', { type: 'button', onclick: async () => {
       me.name = g.n; me.claim = g.k; me.picks = []; me.gp = gpk.get()[0] || null; me.joined = true;
       await saveMe(); sendMe(); showRoom();
-    } }, g.n));
+    } }, g.h === 2 ? 'I\u2019m the birthday baby' : g.n));
   };
   $('#g-edit').addEventListener('click', () => {
     $('#g-room').classList.add('hide'); $('#g-form').classList.remove('hide');
@@ -3817,7 +3817,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261121f');
+    const { openRoom } = await import('./sync.js?v=20261121g');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

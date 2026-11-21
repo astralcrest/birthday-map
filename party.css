@@ -422,3 +422,5 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 @media (min-width: 861px) and (max-height: 700px) { #m-title { font-size: 34px; } #m-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; } #col { top: max(30vh, 200px); } }
 
 @media (min-width: 861px) and (max-height: 700px) { #foot-stats { display: none; } }
+
+#g-room.keeping #g-baghint { display: none; }

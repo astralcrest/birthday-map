@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261121a';
-import * as Gr from './graph.js?v=20261121a';
-import { Player } from './audio.js?v=20261121a';
+import * as M from './music.js?v=20261121c';
+import * as Gr from './graph.js?v=20261121c';
+import { Player } from './audio.js?v=20261121c';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -385,7 +385,7 @@ function align(xy, list) {
   return best;
 }
 function relax(xy) {
-  const n = xy.length, min = n > 20 ? .13 : .2;
+  const n = xy.length, min = n > 20 ? .13 : n > 14 ? .2 : .3;
   for (let it = 0; it < 60; it++) {
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
       let dx = xy[j][0] - xy[i][0], dy = xy[j][1] - xy[i][1];
@@ -577,7 +577,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261121a').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261121c').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -621,7 +621,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261121a');
+    const { openRoom } = await import('./sync.js?v=20261121c');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -666,7 +666,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121a').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261121c').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -2324,7 +2324,7 @@ function contours(c, cx, cy, R, t, seed, color, react) {
   }
 }
 // the part of the stage nothing else covers: right of the words, left of the points, under the menu
-const BOARD_MODES = new Set(['song', 'hops', 'steer', 'twin', 'odd', 'nth', 'match', 'guilty', 'bridge', 'teams', 'decade', 'awards']);
+const BOARD_MODES = new Set(['song', 'hops', 'steer', 'twin', 'odd', 'nth', 'match', 'guilty', 'bridge', 'teams', 'decade']);
 function freeBox() {
   if (!wide()) return { x0: 14, x1: W - 14, y0: 14, y1: Hh - 14 };
   const jw = joinW(), bd = $('#board');
@@ -3817,7 +3817,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261121a');
+    const { openRoom } = await import('./sync.js?v=20261121c');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

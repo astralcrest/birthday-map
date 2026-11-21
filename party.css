@@ -80,7 +80,7 @@ select { font: 500 13px/1.2 var(--mono); border: 1px solid var(--line); border-r
 #host[data-mode=photo] #p-cloud { display: block; }
 #host[data-mode=song] #board, #host[data-mode=hops] #board, #host[data-mode=steer] #board,
 #host[data-mode=twin] #board, #host[data-mode=odd] #board, #host[data-mode=nth] #board, #host[data-mode=match] #board,
-#host[data-mode=guilty] #board, #host[data-mode=bridge] #board, #host[data-mode=teams] #board, #host[data-mode=decade] #board, #host[data-mode=awards] #board { display: block; }
+#host[data-mode=guilty] #board, #host[data-mode=bridge] #board, #host[data-mode=teams] #board, #host[data-mode=decade] #board { display: block; }
 .walk-only { display: none !important; }
 #host[data-mode=walk] .walk-only { display: inline-flex !important; }
 
@@ -415,3 +415,6 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 #howcard .hw-sci:empty { display: none; }
 .g-how details { margin-top: 8px; font: 400 13px/1.5 var(--mono); color: var(--dim); }
 .g-how summary { cursor: pointer; padding: 6px 0; }
+
+.g-mine-h { margin-top: 28px; }
+.g-mine-h:has(+ .mine:empty) { display: none; }

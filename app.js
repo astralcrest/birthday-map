@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261123e';
-import * as Gr from './graph.js?v=20261123e';
-import { Player } from './audio.js?v=20261123e';
+import * as M from './music.js?v=20261123f';
+import * as Gr from './graph.js?v=20261123f';
+import { Player } from './audio.js?v=20261123f';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -585,7 +585,7 @@ function fakeVotes(rd) {
       let v;
       const t = rd.truth || {};
       if (rd.type === 'who') v = Math.random() < .4 && t.ans ? pickOne(t.ans) : pickOne(list).k;
-      else if (rd.type === 'hops') v = clamp(Math.round((t.guess || 3) + (Math.random() * 4 - 2)), 0, 7);
+      else if (rd.type === 'hops') v = Math.random() < .55 ? (t.guess || 0) : Math.floor(Math.random() * 3);
       else if (rd.type === 'twin') { const tw = twinsOf(i); v = Math.random() < .45 && tw.length ? list[tw[0]].k : pickOne(list.filter(x => x.k !== g.k)).k; }
       else if (rd.type === 'steer') v = Math.random() < .55 && t.best ? t.best : pickOne(rd.opts).v;
       else if (rd.type === 'odd') v = Math.random() < .5 ? t.odd : Math.floor(Math.random() * 3);
@@ -623,7 +623,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261123e').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261123f').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -667,7 +667,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261123e');
+    const { openRoom } = await import('./sync.js?v=20261123f');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -716,7 +716,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123e').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123f').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -1415,6 +1415,9 @@ function songReveal() {
 }
 
 // ---------- how many hops ----------
+// three plain answers, not a number: close is 0 to 2 steps, in between is 3 or 4, far is 5 and up
+const HOPS_L = ['close', 'in between', 'far apart'];
+const hopsBucket = h => h <= 2 ? 0 : h <= 4 ? 1 : 2;
 async function hopsStart() {
   const pr = nextPair();
   if (!pr) { setText('#k-q', 'needs two people on the map.'); return; }
@@ -1422,15 +1425,15 @@ async function hopsStart() {
   ++WK.tok; WK.stops = []; WK.pts = [];
   setText('#k-name', ''); setText('#k-track', ''); setText('#k-ans', ''); setText('#k-right', '');
   setText('#m-sub', `${A.n} → ${B.n}`);
-  setText('#k-q', `${A.n} and ${B.n}: how many steps apart is their music? 0 = they share an artist.`);
-  const opts = [0, 1, 2, 3, 4, 5, 6].map(v => ({ v, l: String(v) })).concat([{ v: 7, l: '7 or more' }]);
+  setText('#k-q', `${A.n} and ${B.n}: is their music close or far apart?`);
+  const opts = HOPS_L.map((l, v) => ({ v, l }));
   const known = Gr.pathKnown(A.picks.map(p => p.aid), B.picks.map(p => p.aid));
   tallySet('hops', 'round');
-  const rd = openRound('hops', `${A.n} and ${B.n}: how many steps apart is their music? 0 = they share an artist.`, opts, { guess: known ? known.length - 1 : 4 });
+  const rd = openRound('hops', `${A.n} and ${B.n}: is their music close or far apart?`, opts, { guess: hopsBucket(known ? known.length - 1 : 4) });
   rd.pair = [A, B];
   rd.pathP = pathFor(A, B).pr;
-  setText('#k-hop', 'bets · ' + roundLine());
-  setText('#k-go', 'close bets and walk');
+  setText('#k-hop', 'vote · ' + roundLine());
+  setText('#k-go', 'close the vote and show the link');
   autoClose(rd, 15000, hopsWalk);
   // both ends play while the room bets
   const tok = WK.tok;
@@ -1448,7 +1451,7 @@ async function hopsWalk() {
   const rd = RD;
   if (!rd || rd.type !== 'hops' || !rd.open) return;
   rd.open = false; publish();
-  setText('#k-q', ''); setText('#k-go', 'next stop'); setText('#k-name', ''); setText('#k-track', ''); setText('#k-hop', 'bets closed. finding the path');
+  setText('#k-q', ''); setText('#k-go', 'next stop'); setText('#k-name', ''); setText('#k-track', ''); setText('#k-hop', 'votes are in. here are the artists that link them');
   const [A, B] = rd.pair;
   const res = await rd.pathP;
   if (RD !== rd) return;
@@ -1458,18 +1461,15 @@ async function hopsWalk() {
     await walkPath(res.path, { fromPick: pickFor(A, res.path[0]), toPick: pickFor(B, res.path[res.path.length - 1]), fromLabel: `${A.n}'s pick`, toLabel: `${B.n}'s pick`, dwell: 6500 });
     if (RD !== rd) return;
   }
-  const bets = [...rd.votes.entries()];
-  let right = [], text, best = 9;
-  if (bets.length) {
-    best = Math.min(...bets.map(([, v]) => Math.abs(v - h)));
-    right = bets.filter(([, v]) => Math.abs(v - h) === best).map(([k]) => k);
-    addPoints(right, best === 0 ? 2 : 1);
-  }
-  text = h >= Gr.FAR ? `${A.n} and ${B.n}: more than ${Gr.CAP} steps apart.` : `${A.n} and ${B.n}: ${h} step${h === 1 ? '' : 's'} apart.`;
-  setText('#k-ans', text);
-  setText('#k-right', right.length ? `${best === 0 ? 'spot on, 2 points' : 'closest guess, 1 point'}: ${andList(right.map(nameOf))}` : '');
-  setText('#k-go', 'next bet');
-  rd.open = true; closeRound({ text, right, n: best === 0 ? 2 : 1 });
+  const bk = hopsBucket(h);
+  const right = [...rd.votes.entries()].filter(([, v]) => v === bk).map(([k]) => k);
+  addPoints(right);
+  const text = `${A.n} and ${B.n}: ${HOPS_L[bk]}. ` + (h === 0 ? 'they picked the same artist.' : h >= Gr.FAR ? `no link within ${Gr.CAP} steps.` : `${h} step${h === 1 ? '' : 's'} from one to the other.`);
+  setText('#k-hop', `${A.n} and ${B.n}`); setText('#k-name', ''); setText('#k-track', '');
+  setText('#k-ans', `${HOPS_L[bk]}.`);
+  setText('#k-right', [text.slice(text.indexOf(': ') + 2).replace(/^[^.]*\. /, ''), right.length ? `got it: ${andList(right.map(nameOf))}` : rd.votes.size ? 'nobody got it.' : ''].filter(Boolean).join('\n'));
+  setText('#k-go', 'next pair');
+  rd.open = true; closeRound({ text, right });
 }
 
 // ---------- steer ----------
@@ -2632,7 +2632,7 @@ const HOW = {
   odd: ['three songs play, one after another.', 'two were brought by the same person. one came from someone with very different taste.', 'after all three, tap song 1, 2 or 3 on your phone: the one that does not belong.'],
   steer: ['we start at one person\'s artist. the goal is an artist someone else picked.', 'your phone shows three artists. tap the one you think is closer to the goal.', 'the most tapped one is our next stop. a point if yours was closer.'],
   twin: ['your taste twin is the person here whose music is nearest yours.', 'on your phone, tap who you think yours is.', 'then the screen draws a line from each of you to your real twin.'],
-  hops: ['two of you go up on the screen.', 'guess how many steps apart their music is. one step is one “fans also like” jump. 0 means they share an artist.', 'bets close, the screen walks the path, then the closest guess wins.'],
+  hops: ['two of you go up on the screen. you hear a song from each.', 'is their music close, in between or far apart? vote on your phone.', 'then the screen plays the chain of artists that links them. a short chain means close.'],
   sing: ['on your phone, vote for the song everybody knows.', 'the winner plays.', 'sing.'],
   awards: ['the map hands out prizes.', 'the middle of the room, the wildcard, most points and more.', 'one award at a time, on the big screen.'],
   bday: ['every one of you gets a path of similar artists to the birthday baby.', 'on your phone, guess whose path is shortest.', 'then every path lights up.'],
@@ -2667,7 +2667,7 @@ const MODES = {
   song: { title: 'whose song', sub: 'whose pick is playing? vote on your phone.', go: 'play a song' },
   pairs: { title: 'pairs', sub: 'every two people, scored by steps between their picks.', go: '' },
   list: { title: 'the playlist', sub: '', go: '' },
-  hops: { title: 'how far apart', sub: 'two people. guess how many steps join their music.', go: 'start a round' },
+  hops: { title: 'how far apart', sub: 'two people. is their music close or far apart?', go: 'start a round' },
   steer: { title: 'steer', sub: 'start artist to goal artist. the room votes on every stop.', go: 'start' },
   twin: { title: 'taste twin', sub: 'who here shares your taste?', go: 'open the guesses' },
   odd: { title: 'odd one out', sub: 'three songs. two belong to one person.', go: 'play three' },
@@ -3079,7 +3079,7 @@ function hopRefresh() {
   const line = roundLine();
   if (RD.type === 'who') setText('#k-hop', `round ${songRound} · ${line}`);
   else if (RD.type === 'twin') setText('#k-hop', line);
-  else if (RD.type === 'hops') setText('#k-hop', 'bets · ' + line);
+  else if (RD.type === 'hops') setText('#k-hop', 'vote · ' + line);
   else if (RD.type === 'steer') setText('#k-hop', `step ${ST.steps + 1} · fewest possible: ${ST.best} · ` + line);
   else if (RD.type === 'odd' && OD.playing >= 0) setText('#k-hop', `song ${OD.playing + 1} · ` + line);
   else if (RD.type === 'odd') setText('#k-hop', line);
@@ -3750,10 +3750,10 @@ async function guestMain() {
       if (r.res && !$('#g-room').classList.contains('keeping')) {
         const got = my && (r.res.right || []).includes(my);
         const mine = r.type === 'twin' && r.res.tw && r.res.tw[my];
-        const np = +r.res.n || 1, said = r.type === 'hops' && voted[r.id] !== undefined ? ` you said ${+voted[r.id] === 7 ? '7 or more' : voted[r.id]}.` : '';
+        const np = +r.res.n || 1, said = r.type === 'hops' && voted[r.id] !== undefined ? ` you said ${HOPS_L[+voted[r.id]] || ''}.` : '';
         res.textContent = (mine ? `your twin: ${mine}.` : String(r.res.text || '').replace(/[^.!?]$/, '$&.')) + said + (voted[r.id] !== undefined ? (got ? (np > 1 ? ` you got ${np} points.` : ' you got a point.') : (r.res.right ? ' not this time.' : '')) : '');
         res.classList.toggle('ok', !!got);
-      } else res.textContent = !r.res && (r.type === 'hops' || r.type === 'bridge') ? 'bets are in. watch the screen.' : '';
+      } else res.textContent = !r.res && (r.type === 'hops' || r.type === 'bridge') ? 'votes are in. watch the screen.' : '';
     }
   }
   let keepSig = '';
@@ -3904,7 +3904,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261123e');
+    const { openRoom } = await import('./sync.js?v=20261123f');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

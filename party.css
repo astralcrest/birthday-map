@@ -216,7 +216,7 @@ select { font: 500 13px/1.2 var(--mono); border: 1px solid var(--line); border-r
 
 #foot { position: absolute; left: var(--pad); right: var(--pad); bottom: max(14px, calc(var(--padv) - 26px)); z-index: 2; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; font: 400 clamp(12px, .65vw, 24px)/1.4 var(--mono); color: var(--faint); transition: opacity .6s; pointer-events: none; }
 
-#sound { position: absolute; inset: 0; z-index: 10; background: rgba(6, 1, 15, .9); display: grid; place-items: center; text-align: center; padding: 16px; }
+#sound { position: absolute; inset: 0; z-index: 41; background: rgba(6, 1, 15, .9); display: grid; place-items: center; text-align: center; padding: 16px; }
 .sound-in .note { margin-top: 16px; }
 
 #host.joined #col, #host.joined #p-list, #host.joined #p-pairs, #host.joined #board, #host.joined #p-photo, #host.joined #modes { margin-right: clamp(320px, 25vw, 920px); }
@@ -255,7 +255,7 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 .bk-p.host .bk-h input { color: var(--mint); }
 .bk-tag { font: 500 11px/1 var(--mono); color: var(--mint); flex: none; }
 .bk-picks .picker { grid-column: 1 / -1; }
-.picker { display: grid; gap: 14px; margin-top: 8px; }
+.picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 8px; }
 .slot { position: relative; }
 .slot .chip { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 26px; padding: 8px 8px 8px 16px; min-height: 52px; }
 .slot .chip .lab { flex: 1 1 auto; min-width: 0; }
@@ -376,7 +376,7 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
   #board-ol { font-size: 16px; line-height: 1.35; }
 }
 
-#howcard { position: fixed; inset: 0; z-index: 39; background: var(--night); display: flex; align-items: center; justify-content: center; padding: 5vh 6vw; }
+#howcard { position: fixed; inset: 0; z-index: 39; background: var(--night); display: flex; align-items: safe center; overflow-y: auto; justify-content: center; padding: 5vh 6vw; }
 #howcard.hide { display: none; }
 #howcard .hw-in { max-width: min(1500px, 88vw); }
 #howcard .hw-k { font: 500 clamp(16px, 1.3vw, 44px)/1 var(--mono); letter-spacing: .14em; color: var(--dim); margin: 0 0 2vh; }
@@ -419,7 +419,7 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 .g-mine-h { margin-top: 28px; }
 .g-mine-h:has(+ .mine:empty) { display: none; }
 
-@media (min-width: 861px) and (max-height: 700px) { #m-title { font-size: 34px; } #m-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; } #col { top: max(30vh, 200px); } }
+@media (min-width: 861px) and (max-height: 700px) { #m-title { font-size: 34px; } #m-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; } #col { top: max(24vh, 140px); } .big-answer { font-size: clamp(34px, 3.6vw, 208px); margin-top: 12px; } #photo-ol li { padding: 0; } #photo-ol b, #photo-ol span { line-height: 1.2; } }
 
 @media (min-width: 861px) and (max-height: 700px) { #foot-stats { display: none; } }
 
@@ -434,3 +434,13 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 #standby .sb-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
 #standby a.pill { text-decoration: none; display: inline-flex; align-items: center; }
 #gate-note.warn { color: var(--sun); }
+
+/* short windows: the left rail gives way before it touches the title */
+#p-cloud.fit1 #legend { display: none !important; }
+#p-cloud.fit2 .facts { gap: 6px 40px !important; }
+#p-cloud.fit2 .fact .k { font-size: 11px; }
+#p-cloud.fit2 .fact .v { font-size: 16px; }
+#p-cloud.fit2 .fact .s { display: none; }
+#p-cloud.fit3 .fact:nth-child(n+2) { display: none; }
+#k-track:not(:empty) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+#host[data-mode=photo] #legend, #host[data-mode=photo] #cloud-now { display: none !important; }

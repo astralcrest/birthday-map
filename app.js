@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261123c';
-import * as Gr from './graph.js?v=20261123c';
-import { Player } from './audio.js?v=20261123c';
+import * as M from './music.js?v=20261123d';
+import * as Gr from './graph.js?v=20261123d';
+import { Player } from './audio.js?v=20261123d';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -528,7 +528,8 @@ function keepsakes() {
         let j = twinsOf(i)[0];
         if (j == null) { let m = Infinity; DV.D[i].forEach((d, q) => { if (q !== i && d < m) { m = d; j = q; } }); }
         const tg = j != null && L[j];
-        const gp = tg && (tg.picks.find(p => p.tid) || tg.picks[0]);
+        const own = new Set(g.picks.map(p => +p.aid)), fresh = tg ? tg.picks.filter(p => !own.has(+p.aid)) : [];
+        const gp = fresh.find(p => p.tid) || fresh[0] || (tg && (tg.picks.find(p => p.tid) || tg.picks[0]));
         if (gp) o.gf = [gp.tid ? gp.tt : gp.an, gp.tid ? gp.an : '', gp.tid || 0, tg.k === H.hostKey ? 'the birthday baby' : tg.n];
         for (const p of g.picks) {
           const nb = (M.mem.rel[p.aid] || []).find(a => !taken.has(+a) && M.artistName(a));
@@ -593,6 +594,7 @@ function fakeVotes(rd) {
       else if (rd.type === 'far') v = Math.random() < .4 && t.ans ? pickOne(t.ans) : pickOne(rd.opts).v;
       else if (rd.type === 'guilty') v = Math.random() < .4 ? t.owner : pickOne(list.filter(x => x.k !== g.k)).k;
       else if (rd.type === 'bridge') v = Math.random() < .55 ? 'y' : 'n';
+      else if (rd.type === 'sing') v = pickOne(rd.opts).v;
       else if (rd.type === 'decade') v = Math.random() < .35 ? t.decade : pickOne(rd.opts).v;
       rd.votes.set(g.k, v); rd.vt.set(g.k, performance.now() - rd.t0);
       hopRefresh();
@@ -621,7 +623,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261123c').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261123d').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -665,7 +667,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261123c');
+    const { openRoom } = await import('./sync.js?v=20261123d');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -714,7 +716,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123c').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123d').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -1057,7 +1059,7 @@ function walkLayout() {
     if (bb && bb.bottom > y - 50) tx1 = Math.min(tx1, bb.left - 40);
     let R = clamp(Math.min(Hh * .25, (b.x1 - b.x0) / 2 - 170), 120, 300);
     // the steer names above the ring stay under the mode buttons, which wrap to four rows on small screens
-    const md = $('#modes'), top = md.offsetTop + md.offsetHeight + 12, need = 83 + fontPx(20) * 1.5;
+    const md = $('#modes'), top = md.offsetTop + md.offsetHeight + 12, need = mode === 'steer' ? 83 + fontPx(20) * 1.5 : 16;
     let cy = Math.max(Hh * .45, top + R + need);
     if (cy + R + 90 > y) { R = Math.max(80, (y - 90 - top - need) / 2); cy = top + R + need; }
     // a long answer in the words column would sit on the first stop's label: the trail starts past the column instead
@@ -1114,6 +1116,7 @@ function drawPortrait(c, L, aid, t) {
     if (wide()) c.fillText(o.l, x, y - 13 - fontPx(20) * .9);
   });
   const optSet = new Set(opts.map(o => o.v));
+  if (cy + R3 + fontPx(20) > L.y - 24) return;
   nb.filter(v => !optSet.has(v)).forEach((v, k, arr) => {
     const a = k / arr.length * 6.2832 - Math.PI / 2 + .2;
     const x = cx + Math.cos(a) * R3, y = cy + Math.sin(a) * R3;
@@ -1125,7 +1128,7 @@ function drawPortrait(c, L, aid, t) {
       c.beginPath(); c.moveTo(cx + Math.cos(a) * (R2 + 36), cy + Math.sin(a) * (R2 + 36)); c.lineTo(x - Math.cos(a) * 7, y - Math.sin(a) * 7); c.stroke();
       c.font = `500 ${fontPx(20)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.mint;
       const nt = 'next: ' + M.artistName(v), nw = c.measureText(nt).width, fb = freeBox();
-      const nx = clamp(x + Math.cos(a) * 12 - (Math.cos(a) >= 0 ? 0 : nw), fb.x0 - 40, fb.x1 + 12 - nw);
+      const nx = clamp(x + Math.cos(a) * 12 - (Math.cos(a) >= 0 ? 0 : nw), fb.x0, fb.x1 + 12 - nw);
       c.textAlign = 'left'; c.textBaseline = 'middle';
       c.fillText(nt, nx, y + Math.sin(a) * 12);
     }
@@ -1201,14 +1204,17 @@ function drawTrail(c, t, dt, steer) {
   // endpoints: whose picks
   c.font = `500 ${fontPx(18)}px "IBM Plex Mono", monospace`;
   c.fillStyle = COL.dim; c.textBaseline = 'bottom';
-  if (WK.fromLabel) { c.textAlign = 'left'; c.fillText(WK.fromLabel, Math.max(8, P[0][0] - 10), P[0][1] - 18); }
-  if (WK.toLabel && !steer) { c.textAlign = 'right'; c.fillText(WK.toLabel, Math.min(W - 8, P[n - 1][0] + 10), P[n - 1][1] - 18); }
+  if (n === 1 && WK.fromLabel && WK.toLabel && !steer) { c.textAlign = 'left'; c.fillText(WK.fromLabel.replace(/'s pick$/, '') + ' + ' + WK.toLabel.replace(/'s pick$/, '') + ': same pick', Math.max(8, P[0][0] - 10), P[0][1] - 18); }
+  else {
+    if (WK.fromLabel) { c.textAlign = 'left'; c.fillText(WK.fromLabel, Math.max(8, P[0][0] - 10), P[0][1] - 18); }
+    if (WK.toLabel && !steer) { c.textAlign = 'right'; c.fillText(WK.toLabel, Math.min(W - 8, P[n - 1][0] + 10), P[n - 1][1] - 18); }
+  }
   if (steer && WK.target) {
     const tx = L.x1, ty = L.y;
     c.strokeStyle = COL.rose; c.lineWidth = 1.5; c.beginPath(); c.arc(tx, ty, 11, 0, 6.2832); c.stroke();
     c.fillStyle = COL.rose; c.beginPath(); c.arc(tx, ty, 4, 0, 6.2832); c.fill();
     c.textAlign = 'right'; c.fillText(WK.toLabel, tx + 10, ty - 18);
-    c.textBaseline = 'top'; c.fillText(M.artistName(WK.target), tx + 10, ty + 18);
+    c.textBaseline = 'top'; c.fillStyle = COL.ink; c.font = `600 ${fontPx(24)}px "Instrument Sans", sans-serif`; c.fillText(M.artistName(WK.target), tx + 10, ty + 18);
     const last = P[n - 1];
     c.fillStyle = alpha(COL.rose, .6);
     for (let x = last[0] + 26; x < tx - 20; x += 14) { c.beginPath(); c.arc(x, ty + (last[1] - ty) * (1 - (x - last[0]) / (tx - last[0])), 1.3, 0, 6.2832); c.fill(); }
@@ -1235,7 +1241,7 @@ function waitSkip(ms, tok) {
 }
 function setStop(i, pv, extra = {}) {
   const n = WK.stops.length;
-  const hop = extra.hop || (i === 0 ? `start · ${WK.fromLabel}` : i === n - 1 && !extra.open ? `end · ${WK.toLabel}` : `hop ${i} of ${n - 1}`);
+  const hop = extra.hop || (i === 0 ? (WK.fromLabel.startsWith('start') ? WK.fromLabel : `start · ${WK.fromLabel}`) : i === n - 1 && !extra.open ? `end · ${WK.toLabel}` : `step ${i} of ${n - 1}`);
   setText('#k-hop', hop);
   const an = M.artistName(WK.stops[i]) || (pv && pv.an) || '';
   if (extra.big) { setText('#k-name', extra.big); setText('#k-track', pv ? `${an} · ${pv.tt}` : an); return; }
@@ -1302,6 +1308,7 @@ async function walkPair(A, B, opts = {}) {
   WK.stops = []; WK.pts = [];
   setText('#k-name', ''); setText('#k-track', ''); setText('#k-ans', ''); setText('#k-right', ''); setText('#k-q', '');
   setText('#m-sub', `${A.n} → ${B.n}`);
+  { const sa = $('#walk-a'), sb = $('#walk-b'); if (sa && sb && A.k && B.k) { sa.value = A.k; sb.value = B.k; } }
   // while the map is searched, the first pick already plays
   const first = A.picks[0];
   WK.stops = [first.aid]; WK.i = 0; WK.pos = 0; WK.fromLabel = `${opts.fromName || A.n}'s pick`; WK.toLabel = '';
@@ -1363,7 +1370,7 @@ async function songStart() {
   const pv = await M.previewFor(item.p);
   if (RD !== rd || mode !== 'song') return;
   rd.pv = pv;
-  if (!pv) { setText('#k-track', 'no sound for this one right now. n for another song.'); return; }
+  if (!pv) { closeRound({ text: 'no sound for that one. no points.', right: [] }); setText('#k-q', ''); setText('#k-track', 'no sound for this one. space for another song.'); setText('#k-go', 'next song'); return; }
   if (player.ready) player.play(pv.url, { at: 0 });
   autoClose(rd, 26000, songReveal);
 }
@@ -1388,7 +1395,7 @@ function songReveal() {
   addPoints(right);
   const names = ans.map(nameOf);
   const sl = slotName(item.p).replace(/-/g, '\u2011');
-  const text = names.length > 1 ? `${andList(names)} all picked this.` : `it was ${names[0]}'s${sl ? ' ' + sl : ''}.`;
+  const text = names.length > 1 ? `${andList(names)} ${names.length === 2 ? 'both' : 'all'} picked this.` : `it was ${names[0]}'s${sl ? ' ' + sl : ''}.`;
   setText('#k-q', '');
   setText('#k-ans', text);
   const pv = RD.pv;
@@ -1398,7 +1405,7 @@ function songReveal() {
   for (const [k, v] of RD.votes) if (!ans.includes(v) && !ans.includes(k)) wrong.set(v, (wrong.get(v) || 0) + 1);
   const top = [...wrong.entries()].sort((a, b) => b[1] - a[1])[0];
   const lines = [`${andList(names)}, ${WHY[(songRound - 1 + WHY.length) % WHY.length]}`];
-  if (right.length) lines.push(`got it: ${andList(right.map(nameOf))}.`);
+  if (right.length) lines.push(`got it: ${andList(right.map(nameOf))}.`); else if (RD.votes && RD.votes.size) lines.push('nobody got it.');
   if (top && top[1] >= 2 && nameOf(top[0])) lines.push(`${top[1]} of you said ${nameOf(top[0])}.`);
   setText('#k-right', lines.join('\n'));
   setText('#k-hop', `round ${songRound}`);
@@ -1415,16 +1422,15 @@ async function hopsStart() {
   ++WK.tok; WK.stops = []; WK.pts = [];
   setText('#k-name', ''); setText('#k-track', ''); setText('#k-ans', ''); setText('#k-right', '');
   setText('#m-sub', `${A.n} → ${B.n}`);
-  setText('#k-q', `${A.n} and ${B.n}: how far apart is their music? 0 = same artist, 6 = far.`);
-  const opts = [0, 1, 2, 3, 4, 5, 6].map(v => ({ v, l: String(v) })).concat([{ v: 7, l: 'not linked' }]);
+  setText('#k-q', `${A.n} and ${B.n}: how many steps apart is their music? 0 = they share an artist.`);
+  const opts = [0, 1, 2, 3, 4, 5, 6].map(v => ({ v, l: String(v) })).concat([{ v: 7, l: '7 or more' }]);
   const known = Gr.pathKnown(A.picks.map(p => p.aid), B.picks.map(p => p.aid));
   tallySet('hops', 'round');
-  const rd = openRound('hops', `${A.n} and ${B.n}: how far apart is their music? 0 = same artist, 6 = far.`, opts, { guess: known ? known.length - 1 : 4 });
+  const rd = openRound('hops', `${A.n} and ${B.n}: how many steps apart is their music? 0 = they share an artist.`, opts, { guess: known ? known.length - 1 : 4 });
   rd.pair = [A, B];
   rd.pathP = pathFor(A, B).pr;
   setText('#k-hop', 'bets · ' + roundLine());
   setText('#k-go', 'close bets and walk');
-  setText('#k-name', `${A.picks[0].an} → ${B.picks[0].an}`);
   autoClose(rd, 15000, hopsWalk);
   // both ends play while the room bets
   const tok = WK.tok;
@@ -1442,7 +1448,7 @@ async function hopsWalk() {
   const rd = RD;
   if (!rd || rd.type !== 'hops' || !rd.open) return;
   rd.open = false; publish();
-  setText('#k-q', ''); setText('#k-go', 'next stop'); setText('#k-name', ''); setText('#k-track', '');
+  setText('#k-q', ''); setText('#k-go', 'next stop'); setText('#k-name', ''); setText('#k-track', ''); setText('#k-hop', 'bets closed. finding the path');
   const [A, B] = rd.pair;
   const res = await rd.pathP;
   if (RD !== rd) return;
@@ -1453,17 +1459,17 @@ async function hopsWalk() {
     if (RD !== rd) return;
   }
   const bets = [...rd.votes.entries()];
-  let right = [], text;
+  let right = [], text, best = 9;
   if (bets.length) {
-    const best = Math.min(...bets.map(([, v]) => Math.abs(v - h)));
+    best = Math.min(...bets.map(([, v]) => Math.abs(v - h)));
     right = bets.filter(([, v]) => Math.abs(v - h) === best).map(([k]) => k);
     addPoints(right, best === 0 ? 2 : 1);
   }
-  text = h >= Gr.FAR ? `no path within ${Gr.CAP} steps.` : `${h} step${h === 1 ? '' : 's'}.`;
+  text = h >= Gr.FAR ? `${A.n} and ${B.n}: more than ${Gr.CAP} steps apart.` : `${A.n} and ${B.n}: ${h} step${h === 1 ? '' : 's'} apart.`;
   setText('#k-ans', text);
-  setText('#k-right', right.length ? `best bet: ${andList(right.map(nameOf))}` : '');
+  setText('#k-right', right.length ? `${best === 0 ? 'spot on, 2 points' : 'closest guess, 1 point'}: ${andList(right.map(nameOf))}` : '');
   setText('#k-go', 'next bet');
-  rd.open = true; closeRound({ text, right });
+  rd.open = true; closeRound({ text, right, n: best === 0 ? 2 : 1 });
 }
 
 // ---------- steer ----------
@@ -1482,9 +1488,9 @@ async function steerStart() {
     if (res.path && res.path.length - 1 >= 2) found = { A: pr[0], B: pr[1], path: res.path };
   }
   if (!found) { setText('#k-q', 'could not find a good start. try again.'); return; }
-  Object.assign(ST, { A: found.A, B: found.B, cur: found.path[0], targets: found.B.picks.map(p => p.aid), visited: new Set([found.path[0]]), steps: 0, best: found.path.length - 1, active: true });
-  WK.stops = [ST.cur]; WK.i = 0; WK.pos = 0; WK.fromLabel = `${ST.A.n}'s pick`; WK.toLabel = `${ST.B.n}'s pick`; WK.target = found.path[found.path.length - 1];
-  setText('#m-sub', `from ${ST.A.n}'s pick to ${ST.B.n}'s · the shortest is ${ST.best} steps`);
+  Object.assign(ST, { A: found.A, B: found.B, cur: found.path[0], targets: [found.path[found.path.length - 1]], visited: new Set([found.path[0]]), steps: 0, best: found.path.length - 1, active: true });
+  WK.stops = [ST.cur]; WK.i = 0; WK.pos = 0; WK.fromLabel = `start: ${ST.A.n}'s pick`; WK.toLabel = 'goal'; WK.target = found.path[found.path.length - 1];
+  setText('#m-sub', `start: ${M.artistName(ST.cur)}. goal: ${M.artistName(WK.target)}, ${ST.B.n}'s pick. fewest possible: ${ST.best} steps.`);
   tallySet('steer', 'round');
   steerStep();
 }
@@ -1494,7 +1500,7 @@ async function steerStep() {
   WK.i = WK.stops.length - 1;
   const pv = await M.previewFor(WK.stops.length === 1 ? pickFor(ST.A, ST.cur) : { aid: ST.cur });
   if (tok !== WK.tok) return;
-  setStop(WK.i, pv, { hop: `hop ${ST.steps + 1} · shortest ${ST.best}`, open: true });
+  setStop(WK.i, pv, { hop: `step ${ST.steps + 1} · fewest possible: ${ST.best}`, open: true });
   if (pv && player.ready) player.play(pv.url, { at: 2 }); else if (!pv) player.stop(.6);
   await M.related(ST.cur, 'hi');
   const res = await Gr.pathLive([ST.cur], ST.targets, { budget: 120 });
@@ -1507,10 +1513,11 @@ async function steerStep() {
   const tdist = Gr.bfs(ST.targets, Gr.CAP).dist;
   const better = opts.filter(o => o.v === good || (tdist.get(o.v) ?? Gr.FAR) < dist0).map(o => o.v);
   WK.opts = opts;
-  setText('#k-q', 'where next?');
+  setText('#k-q', `which one gets us closer to ${M.artistName(WK.target)}?`);
+  setText('#k-right', '');
   renderChoices(opts, v => steerChoose(v));
-  const rd = openRound('steer', 'where next?', opts.map(o => ({ v: o.v, l: `${o.c}. ${o.l}` })), { best: good, better });
-  setText('#k-hop', `hop ${ST.steps + 1} · shortest ${ST.best} · ` + roundLine());
+  const rd = openRound('steer', `which one gets us closer to ${M.artistName(WK.target)}?`, opts.map(o => ({ v: o.v, l: `${o.c}. ${o.l}` })), { best: good, better });
+  setText('#k-hop', `step ${ST.steps + 1} · fewest possible: ${ST.best} · ` + roundLine());
   setText('#k-go', 'go with the votes');
   autoClose(rd, 16000, () => steerChoose(null));
 }
@@ -1535,13 +1542,18 @@ async function steerChoose(forced) {
     const v = +b.dataset.v;
     b.classList.toggle('win', v === win);
     b.classList.toggle('good', rd.truth.better.includes(v));
-    b.classList.toggle('bad', v !== win);
+    b.classList.toggle('bad', v !== win && !rd.truth.better.includes(v));
     if (tally.get(v)) b.append(el('span', { class: 'n' }, String(tally.get(v))));
   });
-  closeRound({ text: `the room chose ${M.artistName(win)}`, right });
-  await sleep(1600);
+  const gd = rd.truth.better.map(v => M.artistName(v)), hit = ST.targets.includes(win);
+  setText('#k-q', hit ? `${M.artistName(win)}. that is the goal.` : `next stop: ${M.artistName(win)}.`);
+  setText('#k-right', gd.length ? `closer to the goal: ${andList(gd)}. a point if you picked it.` : 'none of these got closer. no points.');
+  closeRound({ text: hit ? `the room chose ${M.artistName(win)}. that is the goal.` : `the room chose ${M.artistName(win)}. closer to the goal: ${andList(gd) || 'none of them'}.`, right });
+  await sleep(3500);
   if (RD !== rd) return;
+  setText('#k-right', '');
   $('#k-choices').textContent = ''; WK.opts = null;
+  setText('#k-hop', 'finding the next three'); setText('#k-go', '');
   ST.cur = win; ST.visited.add(win); ST.steps++;
   WK.stops.push(win);
   if (ST.targets.includes(win)) {
@@ -1551,7 +1563,8 @@ async function steerChoose(forced) {
     setStop(WK.i, pv, { hop: `arrived` });
     setText('#k-q', '');
     setText('#k-ans', `made it in ${ST.steps}.`);
-    setText('#k-right', `the shortest is ${ST.best}. ${ST.steps === ST.best ? 'a perfect walk.' : ''}`.trim());
+    if (RD) { RD.res = { ...RD.res, text: `made it in ${ST.steps}. the fewest possible was ${ST.best}.` }; publish(); }
+    setText('#k-right', `the fewest possible was ${ST.best}. ${ST.steps === ST.best ? 'a perfect walk.' : ''}`.trim());
     setText('#k-go', 'steer again');
     ST.active = false;
     return;
@@ -1559,7 +1572,8 @@ async function steerChoose(forced) {
   if (ST.steps >= ST.best + 6) {
     setText('#k-q', '');
     setText('#k-ans', `the long way round: ${ST.steps} steps.`);
-    setText('#k-right', `the shortest was ${ST.best}.`);
+    if (RD) { RD.res = { ...RD.res, text: `the long way round: ${ST.steps} steps. the fewest possible was ${ST.best}.` }; publish(); }
+    setText('#k-right', `the fewest possible was ${ST.best}.`);
     setText('#k-go', 'steer again');
     ST.active = false;
     return;
@@ -1580,7 +1594,7 @@ function twinStart() {
   TW.reveal = false;
   setText('#k-ans', ''); setText('#k-right', ''); setText('#k-name', ''); setText('#k-track', '');
   setText('#k-q', 'who here is your taste twin?');
-  setText('#k-track', 'guess on your phone. the map decides. lines show up after.');
+  setText('#k-track', 'your twin is the person whose picks sit closest to yours. tap your guess on your phone.');
   tallySet('twin', 'round');
   openRound('twin', 'who here is your taste twin?', null, {});
   setText('#k-hop', roundLine());
@@ -1601,16 +1615,16 @@ function twinReveal() {
   const mutual = [];
   DV.list.forEach((g, i) => twinsOf(i).forEach(j => { if (j > i && twinsOf(j).includes(i)) mutual.push(`${g.n} + ${DV.list[j].n}`); }));
   setText('#k-q', '');
-  setText('#k-hop', 'the lines point to each twin');
+  setText('#k-hop', 'find your dot. your line points to your twin.');
   const f = DV.facts, L = DV.list;
   const lead = mutual.length ? mutual[0] : f.closest ? `${L[f.closest[0]].n} + ${L[f.closest[1]].n}` : '';
   setText('#k-ans', lead);
-  setText('#k-track', mutual.length > 1 ? 'also twins: ' + mutual.slice(1, 6).join(' · ') : mutual.length ? 'twins both ways.' : 'the closest pair in the room.');
-  setText('#k-right', right.length ? `found their twin: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody guessed their twin. now you know.' : '');
-  setText('#k-go', 'guess again');
+  setText('#k-track', '');
+  setText('#k-right', [mutual.length ? `each other's twin.${mutual.length > 1 ? ' also: ' + mutual.slice(1, 6).join(' · ') : ''}` : 'the closest pair in the room.', right.length ? `found their twin: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody guessed their twin. now you know.' : ''].filter(Boolean).join('\n'));
+  setText('#k-go', 'next game');
   const tw = {};
   DV.list.forEach((g, i) => { const t = twinsOf(i).map(j => DV.list[j].n); if (t.length) tw[g.k] = andList(t.slice(0, 2)); });
-  closeRound({ text: lead ? `twins: ${lead}.` : 'lines show each twin', right, tw });
+  closeRound({ text: lead ? (mutual.length ? `${lead}: each other's twin.` : `closest pair: ${lead}.`) : 'lines show each twin', right, tw });
 }
 function drawTwinLines(c, P) {
   if (!TW.reveal) return;
@@ -1630,30 +1644,30 @@ function drawTwinLines(c, P) {
 const OD = { clips: [], playing: -1, reveal: false, odd: -1 };
 async function oddStart() {
   const L = DV.list;
-  const doubles = L.filter(g => g.picks.length >= 2);
+  const doubles = L.filter(g => new Set(g.picks.map(p => p.aid)).size >= 2);
   if (!doubles.length || L.length < 2) { setText('#k-q', 'needs someone with two picks.'); return; }
   const A = pickOne(doubles);
   const ia = DV.idx.get(A.k);
   const others = L.filter(g => g.k !== A.k).sort((x, y) => DV.D[ia][DV.idx.get(y.k)] - DV.D[ia][DV.idx.get(x.k)]);
   const B = pickOne(others.slice(0, Math.max(1, Math.ceil(others.length / 2))));
-  const [a1, a2] = shuffle(A.picks).slice(0, 2);
+  const ps = shuffle(A.picks), a1 = ps[0], a2 = ps.find(p => p.aid !== a1.aid);
   const b1 = pickOne(B.picks);
   const clips = shuffle([{ g: A, p: a1 }, { g: A, p: a2 }, { g: B, p: b1, odd: true }]);
   OD.clips = clips; OD.reveal = false; OD.odd = clips.findIndex(x => x.odd); OD.playing = -1;
   setText('#k-ans', ''); setText('#k-right', ''); setText('#k-name', ''); setText('#k-track', '');
-  setText('#k-q', 'two of these belong to one person. spot the stranger.');
+  setText('#k-q', 'two of these songs belong to one person. which one does not?');
   tallySet('odd', 'round');
-  const rd = openRound('odd', 'which one is the stranger?', [{ v: 0, l: 'one' }, { v: 1, l: 'two' }, { v: 2, l: 'three' }], { odd: OD.odd });
+  const rd = openRound('odd', 'which song does not belong? listen to all three first.', [{ v: 0, l: 'song 1' }, { v: 1, l: 'song 2' }, { v: 2, l: 'song 3' }], { odd: OD.odd });
   setText('#k-go', 'reveal');
   const tok = ++WK.tok;
   for (let i = 0; i < 3; i++) {
     if (RD !== rd || tok !== WK.tok) return;
     OD.playing = i;
-    setText('#k-hop', `${['one', 'two', 'three'][i]} · ` + roundLine());
+    setText('#k-hop', `song ${i + 1} · ` + roundLine());
     const pv = await M.previewFor(clips[i].p);
     if (RD !== rd || tok !== WK.tok || mode !== 'odd') return;
     if (pv && player.ready) player.play(pv.url, { at: 5 });
-    else { player.stop(.6); setText('#k-hop', `${['one', 'two', 'three'][i]} · no sound for this one`); }
+    else { player.stop(.6); setText('#k-hop', `song ${i + 1} · no sound for this one`); }
     await waitSkip(pv ? 11000 : 3000, tok);
   }
   OD.playing = -1;
@@ -1671,11 +1685,11 @@ function oddReveal() {
   const w = ['one', 'two', 'three'];
   const s = OD.clips[OD.odd], pair = OD.clips.filter((_, i) => i !== OD.odd);
   setText('#k-q', '');
-  setText('#k-ans', `the stranger: ${s.g.n}'s ${slotName(s.p).replace(/-/g, '\u2011') || 'pick'}.`);
-  setText('#k-track', `${w[OD.odd]} was ${pickLabel(s.p)}. the other two were ${pair[0].g.n}'s: ${pair.map(x => x.p.tt || x.p.an).join(' and ')}.`);
+  setText('#k-ans', `the odd one out: song ${OD.odd + 1}, ${s.g.n}'s ${slotName(s.p).replace(/-/g, '\u2011') || 'pick'}.`);
+  setText('#k-track', `song ${OD.odd + 1} was ${pickLabel(s.p)}. the other two songs were both ${pair[0].g.n}'s: ${pair.map(x => x.p.tt || x.p.an).join(' and ')}.`);
   setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-go', 'three more');
-  closeRound({ text: `${w[OD.odd]} was the stranger`, right });
+  closeRound({ text: `song ${OD.odd + 1} did not belong. it was ${s.g.n}'s`, right });
 }
 
 // ---------- the birthday round: six degrees to the birthday baby ----------
@@ -1744,10 +1758,10 @@ async function bdayStart() {
   const low = reach[0].hops;
   const ans = reach.filter(r => r.hops === low).map(r => r.g.k);
   const opts = shuffle(BD.rows.length <= 12 ? [...BD.rows] : [...reach.slice(0, 3), ...shuffle(BD.rows.slice(3)).slice(0, 7)]).map(r => ({ v: r.g.k, l: r.g.n }));
-  setText('#k-q', 'who is closest to the birthday baby?');
+  setText('#k-q', 'whose music is closest to the birthday baby\'s?');
   setText('#k-go', 'reveal');
   tallySet('bday', 'round');
-  const rd = openRound('far', 'who is closest to the birthday baby?', opts, { ans, low });
+  const rd = openRound('far', 'whose music is closest to the birthday baby\'s?', opts, { ans, low });
   rd.hp = 'guess · ';
   hopRefresh();
   showNames(opts.map(o => o.l));
@@ -1763,7 +1777,7 @@ async function bdayWalk() {
     addPoints(right, 2);
     const text = `closest: ${andList(ans.map(nameOf))}, ${low} step${low === 1 ? '' : 's'}.`;
     note = text + (right.length ? ` got it: ${andList(right.map(nameOf))}.` : '');
-    closeRound({ text, right });
+    closeRound({ text, right, n: 2 });
   }
   $('#k-choices').textContent = '';
   renderBdayList();
@@ -1783,7 +1797,7 @@ async function bdayWalk() {
     const ok = await walkPath(stops, {
       fromPick: pickFor(r.g, path[0]), toPick: pickFor(hostG, path[end]),
       fromLabel: `${r.g.n}'s pick`, toLabel: 'the birthday baby', big: `${r.g.n}'s way home`,
-      hopText: i => i === 0 ? `start · ${r.g.n}'s pick` : i === stops.length - 1 ? `home · ${hs}` : i === j ? `joins ${walked.get(path[j])}'s road` : `hop ${i} of ${r.hops}`,
+      hopText: i => i === 0 ? `start · ${r.g.n}'s pick` : i === stops.length - 1 ? `home · ${hs}` : i === j ? `joins ${walked.get(path[j])}'s road` : `step ${i} of ${r.hops}`,
       dwellAt: (i, n) => i === n - 1 ? (last ? 4000 : 2500) : i === j ? 3000 : w === 0 ? 3200 : 2500,
     });
     // e jumps straight to the final card
@@ -1805,9 +1819,11 @@ async function bdayWalk() {
 }
 function renderBdayList() {
   const ol = $('#board-ol');
-  $('#board h3').textContent = 'hops to the birthday baby';
+  $('#board h3').textContent = 'steps to the birthday baby';
   ol.textContent = '';
-  for (const r of BD.rows.slice(0, 12)) ol.append(el('li', {}, el('span', {}, r.g.n), el('span', {}, r.hops == null ? 'scenic' : String(r.hops))));
+  const cut = BD.rows.length > 12 ? 11 : 12;
+  for (const r of BD.rows.slice(0, cut)) ol.append(el('li', {}, el('span', {}, r.g.n), el('span', {}, r.hops == null ? 'scenic' : String(r.hops))));
+  if (BD.rows.length > cut) ol.append(el('li', { class: 'more' }, el('span', {}, `and ${BD.rows.length - cut} more`)));
   $('#board').style.display = 'block';
 }
 function drawBdayFinal(c, t) {
@@ -1905,11 +1921,11 @@ async function nthStart() {
   const { A, B, path, i, pv } = found, h = path.length - 1;
   Object.assign(NT, { A, B, h });
   setText('#m-sub', `${A.n} and ${B.n} are ${h} steps apart.`);
-  setText('#k-q', 'this artist sits on the path between them. nearer to whom?');
+  setText('#k-q', `the song playing sits somewhere between ${A.n}'s music and ${B.n}'s. whose is it closer to?`);
   setText('#k-go', 'reveal');
-  const rd = openRound('nth', `listen. nearer ${A.n} or ${B.n}?`, [{ v: 'a', l: `nearer ${A.n}` }, { v: 'b', l: `nearer ${B.n}` }], { ans: i < h - i ? 'a' : 'b', i, h });
-  Object.assign(rd, { pair: [A, B], path, pv, hp: 'nearer · ' });
-  setText('#k-hop', 'nearer · ' + roundLine());
+  const rd = openRound('nth', `listen. is this closer to ${A.n}'s music or ${B.n}'s?`, [{ v: 'a', l: `closer to ${A.n}` }, { v: 'b', l: `closer to ${B.n}` }], { ans: i < h - i ? 'a' : 'b', i, h });
+  Object.assign(rd, { pair: [A, B], path, pv, hp: 'closer to whom · ' });
+  setText('#k-hop', 'closer to whom · ' + roundLine());
   autoClose(rd, 22000, nthReveal);
   loopClip(pv, tok, rd, 4, 6500);
 }
@@ -1921,8 +1937,8 @@ async function nthReveal() {
   right.forEach(k => addPoints([k], fastPts(rd, k)));
   const nm = M.artistName(rd.path[i]) || rd.pv.an;
   const text = `${nm}: ${i} step${i === 1 ? '' : 's'} from ${A.n}, ${h - i} from ${B.n}.`;
-  setText('#k-q', ''); setText('#k-ans', `nearer ${ans === 'a' ? A.n : B.n}.`); setText('#k-track', text);
-  setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
+  setText('#k-q', ''); setText('#k-ans', `closer to ${ans === 'a' ? A.n : B.n}.`);
+  setText('#k-right', `the song was ${text}` + (right.length ? `\ngot it: ${right.length > 4 ? right.length + ' of you' : andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? '\nnobody got it.' : ''));
   setText('#k-go', 'next clip');
   closeRound({ text, right });
   NT.reveal = true; WK.lit = i;
@@ -1964,7 +1980,7 @@ async function matchStart() {
   clearTexts();
   setText('#m-sub', 'two dots are lit. everyone else is dimmed.');
   setText('#k-q', 'who are these two?');
-  setText('#k-track', `similarity ${Gr.score(d)} · ${d.toFixed(1)} steps apart. their picks play.`);
+  setText('#k-track', `their songs are playing. they are ${hopsTxt(d)} apart on the map.`); setText('#k-hop', '');
   setText('#k-go', 'reveal');
   const rd = openRound('match', 'who are the two lit dots?', opts, { ans: key(i, j) });
   Object.assign(rd, { hp: 'pair · ', pair: [A, B] });
@@ -1991,7 +2007,7 @@ function drawMatch(c, t, dt) {
   if (!P || ia === undefined || ib === undefined) return;
   const d = MT.d !== undefined ? MT.d : DV.D[ia][ib], m = [(P[ia][0] + P[ib][0]) / 2, (P[ia][1] + P[ib][1]) / 2 - 44];
   c.font = `500 ${fontPx(16)}px "IBM Plex Mono", monospace`; c.fillStyle = COL.mint; c.textAlign = 'center'; c.textBaseline = 'bottom';
-  c.fillText(`${Gr.score(d)} · ${d.toFixed(1)} steps`, m[0], m[1]);
+  c.fillText(`${hopsTxt(d)} apart`, m[0], m[1]);
 }
 
 // ---- guilty pleasure ----
@@ -2011,7 +2027,7 @@ async function guiltyStart() {
   setText('#k-q', 'whose guilty pleasure is this?');
   setText('#k-track', `${have.length} secrets in. one of you hid this.`);
   setText('#k-go', 'reveal');
-  const rd = openRound('guilty', 'whose guilty pleasure is this?', null, { owner: item.k });
+  const rd = openRound('guilty', 'whose guilty pleasure is this?', have.map(g => ({ v: g.k, l: g.n })), { owner: item.k });
   Object.assign(rd, { pv, item, hp: `secret ${gpRound} · ` });
   setText('#k-hop', rd.hp + roundLine());
   autoClose(rd, 28000, guiltyReveal);
@@ -2024,7 +2040,7 @@ function guiltyReveal() {
   const right = [...rd.votes.entries()].filter(([k, v]) => v === o && k !== o).map(([k]) => k);
   addPoints(right);
   const text = `it was ${nameOf(o)}'s guilty pleasure.`;
-  setText('#k-q', ''); setText('#k-ans', text);
+  setText('#k-q', ''); setText('#k-ans', `${nameOf(o)}'s.`);
   setText('#k-track', `${rd.pv.tt} · ${rd.pv.an}`);
   setText('#k-right', right.length ? `got it: ${andList(right.map(nameOf))}` : RD && RD.votes && RD.votes.size ? 'nobody got it.' : '');
   setText('#k-hop', `secret ${gpRound}`);
@@ -2034,7 +2050,7 @@ function guiltyReveal() {
 
 // ---- bridge builder: the rule is a detour of at most two hops ----
 const BR = { A: null, B: null, cur: null, t0: 0 };
-const BR_RULE = 'a bridge adds two steps at most.';
+const BR_RULE = 'it counts if going through it adds two steps at most.';
 async function bridgeStart() {
   const E = eligible();
   if (E.length < 2 || DV.list.length < 3) { setText('#k-q', 'needs two phones on the map and a third person to vote.'); return; }
@@ -2092,20 +2108,20 @@ async function bridgeReveal() {
   rd.open = false; publish();
   const { A, B } = BR;
   setText('#k-go', ''); setText('#k-q', ''); setText('#k-right', '');
-  setText('#k-track', 'testing. ' + BR_RULE);
+  setText('#k-track', 'checking. ' + BR_RULE);
   const sr = await rd.pathP;
   if (RD !== rd) return;
   const short = sr.path ? sr.path.length - 1 : null;
   const results = [];
   for (const [k, p] of rd.replies) {
     const by = k === A.k ? A : B, nm = M.artistName(p.aid) || p.an;
-    setText('#k-hop', `${by.n} named ${nm}`); setText('#k-ans', ''); setText('#k-track', 'testing. ' + BR_RULE);
-    const r = await bridgeTest(A, B, p, short);
+    BR.cur = null; setText('#k-hop', `${by.n} named ${nm}`); setText('#k-ans', ''); setText('#k-track', 'checking. ' + BR_RULE);
+    const r = await Promise.race([bridgeTest(A, B, p, short), new Promise(ok => setTimeout(() => ok({ ok: false, why: 'took too long to check.' }), 12000))]);
     if (RD !== rd) return;
     r.by = by; r.nm = nm; results.push(r);
     BR.cur = r; BR.t0 = performance.now();
     setText('#k-ans', r.ok ? 'a bridge.' : 'not a bridge.');
-    setText('#k-track', r.why ? `${nm}: ${r.why}` : `${nm} is ${r.dA} from ${A.n}'s picks and ${r.dB} from ${B.n}'s. shortest is ${short}.`);
+    setText('#k-track', r.why ? `${nm}: ${r.why}` : `${nm}: ${r.dA} steps from ${A.n}, ${r.dB} from ${B.n}. the direct way is ${short}. ${r.ok ? 'it counts.' : 'too far.'}`);
     await sleep(5200);
     if (RD !== rd) return;
   }
@@ -2115,7 +2131,7 @@ async function bridgeReveal() {
   const right = voters.filter(([, v]) => v === (any ? 'y' : 'n')).map(([k]) => k);
   addPoints(right);
   if (any) { addPoints([A.k, B.k], 2); right.push(A.k, B.k); }
-  const text = any ? `${andList(results.filter(r => r.ok).map(r => r.nm))} bridges ${A.n} and ${B.n}.` : `no bridge between ${A.n} and ${B.n}.`;
+  const text = any ? `${andList(results.filter(r => r.ok).map(r => r.nm))} ${results.filter(r => r.ok).length > 1 ? 'bridge' : 'bridges'} ${A.n} and ${B.n}.` : `no bridge between ${A.n} and ${B.n}.`;
   setText('#k-hop', ''); setText('#k-ans', any ? 'bridge found.' : 'no bridge.');
   setText('#k-right', right.length ? `points: ${andList(right.map(nameOf))}` : 'no points.');
   setText('#k-go', 'again');
@@ -2233,7 +2249,7 @@ function teamsTexts() {
   DV.list.forEach(g => cnt[teamOfKey(g.k)]++);
   setText('#k-hop', 'two taste camps');
   setText('#k-q', `${T.n[0]} vs ${T.n[1]}`);
-  setText('#k-track', `${cnt[0]} and ${cnt[1]} people. points ${tot[0]} to ${tot[1]}.`);
+  setText('#k-track', `${cnt[0]} vs ${cnt[1]} people. team points so far: ${tot[0]} to ${tot[1]}.`);
 }
 function drawTeams(c, t, dt) {
   const T = H.teams, R = sideRect(.66, .36);
@@ -2325,7 +2341,7 @@ async function decadeReveal() {
   if (RD !== rd) return;
   const near = DV.list.map(g => [g, avgYear(g)]).filter(x => x[1] != null).sort((a, b) => Math.abs(a[1] - year) - Math.abs(b[1] - year)).slice(0, 3);
   DC.lit = new Set(near.map(x => x[0].k));
-  if (near.length) setText('#k-right', `${right.length ? `got it: ${andList(right.map(nameOf))}. ` : RD && RD.votes && RD.votes.size ? 'nobody got it. ' : ''}picks closest in years: ${andList(near.map(([g, a]) => `${g.n} (${Math.round(a)})`))}`);
+  if (near.length) setText('#k-right', `${right.length ? `got it: ${andList(right.map(nameOf))}. ` : RD && RD.votes && RD.votes.size ? 'nobody got it. ' : ''}also from around then: ${andList(near.map(([g, a]) => `${g.n} (${Math.round(a)})`))}`);
 }
 function drawDecade(c, t, dt) {
   if (DC.reveal) {
@@ -2341,7 +2357,7 @@ function drawDecade(c, t, dt) {
     const cx = x0 + (i + .5) * w;
     c.strokeStyle = alpha(COL.ice, .4); c.beginPath(); c.moveTo(x0 + i * w, y - 5); c.lineTo(x0 + i * w, y + 5); c.stroke();
     c.fillStyle = DC.reveal && decOf(DC.year) === d ? COL.mint : COL.dim;
-    c.fillText(d === 1960 ? 'pre-70' : String(d).slice(2) + 's', cx, y + 10);
+    c.fillText(d === 1960 ? '60s or earlier' : String(d).slice(2) + 's', cx, y + 10);
     c.fillStyle = COL.ink;
     for (let k = 0; k < tally[i]; k++) { c.beginPath(); c.arc(cx - 6 + (k % 2) * 12, y - 16 - Math.floor(k / 2) * 12, 4, 0, 6.2832); c.fill(); }
   });
@@ -2407,16 +2423,17 @@ function drawOdd(c, t) {
   const y = wide() ? Hh * .55 : Hh * .5;
   const R = wide() ? Math.min(span / 6.6, Hh * .14) : Math.min(W * .12, Hh * .18);
   const xs = wide() ? [b.x0 + span / 6, b.x0 + span / 2, b.x0 + span * 5 / 6] : [W * .19, W * .5, W * .81];
-  const lab = ['one', 'two', 'three'];
-  c.font = `500 ${fontPx(18)}px "IBM Plex Mono", monospace`; c.textAlign = 'center'; c.textBaseline = 'top';
+  const lab = ['1', '2', '3'];
+  const fBig = `600 ${fontPx(40)}px "IBM Plex Mono", monospace`, fSm = `500 ${fontPx(18)}px "IBM Plex Mono", monospace`;
+  c.textAlign = 'center'; c.textBaseline = 'top';
   xs.forEach((x, i) => {
     let col = COL.ice;
     if (OD.reveal) col = i === OD.odd ? COL.rose : COL.mint;
     else if (OD.playing === i) col = COL.mint;
     contours(c, x, y, R, t, i * 2.1, col, OD.playing === i);
-    c.fillStyle = OD.reveal ? col : COL.dim;
+    c.font = fBig; c.fillStyle = OD.reveal ? col : OD.playing === i ? COL.mint : COL.ink;
     c.fillText(lab[i], x, y + R * 1.35);
-    if (OD.reveal && OD.clips[i]) { c.fillStyle = COL.dim; c.fillText(OD.clips[i].g.n, x, y + R * 1.35 + fontPx(18) * 1.6); }
+    if (OD.reveal && OD.clips[i]) { c.font = fSm; c.fillStyle = COL.dim; c.fillText(OD.clips[i].g.n, x, y + R * 1.35 + fontPx(40) * 1.3); }
   });
 }
 
@@ -2599,39 +2616,39 @@ const DRAW = {
 // one line of the how behind each game, in plain words
 const HOP = 'a step is one jump from an artist to a similar one, like the “fans also like” row in a music app. artist A to a similar artist B is one step. B on to C makes two. few steps between two people means close taste. it comes from listening habits, not the sound itself.';
 const SCI = {
-  cloud: 'two artists are linked when a music service lists them as “fans also like”: the people who play one tend to play the other. we count the links between your picks and everyone else’s, then lay the room out so fewer links means closer dots. it is listening habits, not the sound itself.',
+  cloud: 'two artists are linked when a music service lists them as “fans also like”: the people who play one tend to play the other. we count how many of those steps it takes to get from your picks to everyone else’s. fewer steps, closer dots. it is listening habits, not the sound itself.',
   walk: HOP + ' the path is the shortest chain we could find.',
   steer: HOP, hops: HOP + ' the answer is the shortest chain we could find.',
   bday: HOP + ' closest means the fewest steps.',
-  twin: 'your taste twin is the person whose picks are the fewest “fans also like” jumps from yours.',
+  twin: 'your taste twin is the person whose picks are the fewest “fans also like” steps from yours.',
   odd: 'the odd song comes from someone on the far side of the map from that person, so your ear has something to go on.',
-  awards: 'the middle of the room is the fewest steps from everyone else. the wildcard is the most. the bridge is the artist that sits on the most paths between you.',
-  pairs: HOP,
+  awards: 'the middle of the room is the fewest steps from everyone else. the wildcard is the most. the artist holding this room together sits on the most paths between you.',
+  pairs: HOP, nth: HOP, match: HOP, bridge: HOP,
 };
 const HOW = {
   cloud: ['every dot is one of you.', 'your dot sits next to the people whose music is most like yours.', 'a line joins you to your two nearest people.'],
   walk: ['we pick two of you.', 'we travel from one person’s music to the other’s, one similar artist at a time.', 'a short trip means close taste. just watch and listen.'],
   song: ['a song that one of you brought starts playing.', 'on your phone, tap who you think brought it.', 'a right guess is a point.'],
-  odd: ['three songs play, one after another.', 'two were brought by the same person. one came from someone with very different taste.', 'on your phone, tap 1, 2 or 3: the one that does not belong.'],
-  steer: ['the screen shows a START artist and a GOAL artist.', 'your phone shows a few similar artists. tap the one you think leads toward the goal.', 'the most tapped one is our next stop. reach the goal in as few stops as you can.'],
+  odd: ['three songs play, one after another.', 'two were brought by the same person. one came from someone with very different taste.', 'after all three, tap song 1, 2 or 3 on your phone: the one that does not belong.'],
+  steer: ['we start at one person\'s artist. the goal is an artist someone else picked.', 'your phone shows three artists. tap the one you think is closer to the goal.', 'the most tapped one is our next stop. a point if yours was closer.'],
   twin: ['your taste twin is the person here whose music is nearest yours.', 'on your phone, tap who you think yours is.', 'then the screen draws a line from each of you to your real twin.'],
-  hops: ['two of you go up on the screen.', 'how alike is their music? tap a number on your phone. small means very alike, big means far apart.', 'the real number is how many “fans also like” jumps join them. closest guess wins, then we play the path.'],
-  sing: ['the room votes for the one song everybody knows.', 'the winner plays.', 'sing.'],
-  awards: ['the map hands out prizes.', 'the middle of the room, the wildcard, most points and more.', 'one at a time. space for the next.'],
+  hops: ['two of you go up on the screen.', 'guess how many steps apart their music is. one step is one “fans also like” jump. 0 means they share an artist.', 'bets close, the screen walks the path, then the closest guess wins.'],
+  sing: ['on your phone, vote for the song everybody knows.', 'the winner plays.', 'sing.'],
+  awards: ['the map hands out prizes.', 'the middle of the room, the wildcard, most points and more.', 'one award at a time, on the big screen.'],
   bday: ['every one of you gets a path of similar artists to the birthday baby.', 'on your phone, guess whose path is shortest.', 'then every path lights up.'],
   toast: ['get a glass.', 'we count down together.', 'then: happy birthday.'],
   photo: ['everyone on the map, one last time.', 'look at the screen.', 'your phone now holds your goodie bag.'],
-  list: ['every song from tonight, in one order.', 'press play here to hear them.', 'the same list is on your phone, with links.'],
+  list: ['every song from tonight, in one order.', 'the screen plays them one by one.', 'the same list is on your phone, with spotify and apple links.'],
   pairs: ['every two of you get a score.', 'it counts the steps between your picks.', 'fewer steps, higher score.'],
-  nth: ['one clip plays from somewhere on a path between two picks.', 'on your phone, say which end it is nearer.', 'a right guess is a point.'],
+  nth: ['we pick two of you and link your music through similar artists.', 'a song plays from an artist somewhere on that chain.', 'on your phone, tap whose music it is closer to. a right guess is a point. a fast one is two.'],
   match: ['two dots light up with no names.', 'on your phone, guess who they are.', 'a right guess is a point.'],
   guilty: ['one secret song plays.', 'on your phone, guess whose guilty pleasure it is.', 'a right guess is a point.'],
-  bridge: ['we pick two of you.', 'together, name one artist that connects your picks.', 'the map checks it.'],
-  teams: ['the map pulls the room into two taste camps.', 'find your side.', 'that is your team.'],
+  bridge: ['we pick two of you. each names one artist, on their phone, that links their music to the other person\'s.', 'everyone else bets: will it work?', 'it works if going through that artist adds two steps at most.'],
+  teams: ['the map splits the room into two taste camps.', 'your phone shows your team.', 'from now on your points also count for your team.'],
   decade: ['a song plays.', 'on your phone, pick the decade it is from.', 'a right guess is a point.'],
 };
 let howT = 0;
-const howSeen = new Set();
+const howSeen = new Set(['cloud']);
 function toggleHow(on, m = mode) {
   const box = $('#howcard');
   if (on === undefined) on = box.classList.contains('hide');
@@ -2655,7 +2672,7 @@ const MODES = {
   twin: { title: 'taste twin', sub: 'who here shares your taste?', go: 'open the guesses' },
   odd: { title: 'odd one out', sub: 'three songs. two belong to one person.', go: 'play three' },
   bday: { title: 'the birthday round', sub: 'every road leads to the birthday baby.', go: 'start the finale' },
-  nth: { title: 'name that step', sub: 'one clip from somewhere on a path. nearer which end?', go: 'start' },
+  nth: { title: 'name that step', sub: 'a song plays from between two people\'s music. whose is it closer to?', go: 'start' },
   match: { title: 'matchmaker', sub: 'two dots are lit. who are they?', go: 'light two dots' },
   guilty: { title: 'guilty pleasure', sub: 'one secret song. whose is it?', go: 'play a secret' },
   bridge: { title: 'bridge builder', sub: 'two people name one artist that connects them.', go: 'pick two' },
@@ -2676,8 +2693,8 @@ function awardList() {
   if (L.length >= 2) {
     // the room first: these belong to everyone
     const ds = []; for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) if (D[i][j] < Gr.FAR) ds.push(D[i][j]);
-    if (ds.length) out.push({ k: 'this room, in one number', v: hopsTxt(ds.reduce((x, y) => x + y, 0) / ds.length), s: 'the average distance between any two of you.', lit: all });
-    if (f.bridge) out.push({ k: 'the artist holding this room together', v: M.artistName(f.bridge), s: `links ${f.bridgeCount} pairs of you`, lit: all, pick: { k: 'a', aid: f.bridge, an: M.artistName(f.bridge) } });
+    if (ds.length) out.push({ k: 'this room, in one number', v: hopsTxt(ds.reduce((x, y) => x + y, 0) / ds.length), s: 'on average, any two of you are this many “fans also like” steps apart.', lit: all, room: 1 });
+    if (f.bridge) out.push({ k: 'the artist holding this room together', v: M.artistName(f.bridge), s: `links ${f.bridgeCount} pairs of you`, lit: all, room: 1, pick: { k: 'a', aid: f.bridge, an: M.artistName(f.bridge) } });
     const [a, b] = f.closest;
     out.push({ k: 'the twins', v: `${L[a].n} + ${L[b].n}`, s: `${hopsTxt(D[a][b])} apart. basically one playlist.`, lit: [L[a].k, L[b].k] });
     out.push({ k: 'the middle of the room', v: L[f.center].n, s: 'closest to everyone, on average. the glue.', lit: [L[f.center].k] });
@@ -2695,7 +2712,7 @@ function awardList() {
     const cnt = new Map();
     for (const r of BDP.rows) if (r.path) for (const v of r.path.slice(1, -1)) cnt.set(v, (cnt.get(v) || 0) + 1);
     const best = [...cnt.entries()].filter(e => e[0] !== f.bridge).sort((a, b) => b[1] - a[1])[0];
-    if (best && best[1] >= 3) out.push({ k: 'the crossroads', v: M.artistName(best[0]), s: `${best[1]} of your roads to the birthday baby go through here`, lit: [], pick: { k: 'a', aid: best[0], an: M.artistName(best[0]) } });
+    if (best && best[1] >= 3) out.push({ k: 'the crossroads', v: M.artistName(best[0]), s: `${best[1]} of you reach the birthday baby's music through this artist`, lit: [], pick: { k: 'a', aid: best[0], an: M.artistName(best[0]) } });
   }
   // points go last
   const rows = Object.entries(H.scores).filter(([k]) => H.guests.has(k)).sort((a, b) => b[1] - a[1]);
@@ -2719,6 +2736,7 @@ function drawConfetti(c, t, dt) {
   }
 }
 async function awardNext() {
+  if (AW.rolling) return;
   if (AW.i < 0) AW.list = awardList();
   const tok = ++AW.tok;
   AW.i++;
@@ -2738,21 +2756,23 @@ async function awardNext() {
   AW.lit = new Set();
   AW.pub = { i: AW.i + 1, n: AW.list.length, k: a.k }; publish();
   // the drumroll: the room gets a beat to shout a guess
+  AW.rolling = true;
   const wp = a.pick || (a.lit.length && a.lit.length <= 2 && H.guests.get(a.lit[0]) && H.guests.get(a.lit[0]).picks[0]) || null;
   const pr = wp ? M.previewFor(wp).catch(() => null) : Promise.resolve(null);
   if (player.ready) player.stop(.5);
   for (const d of ['and it goes to', 'and it goes to .', 'and it goes to . .', 'and it goes to . . .']) {
-    setText('#k-track', d);
+    setText('#k-right', d);
     await sleep(650);
-    if (tok !== AW.tok || mode !== 'awards') return;
+    if (tok !== AW.tok || mode !== 'awards') { AW.rolling = false; return; }
   }
+  AW.rolling = false;
   chime(AW.i); confetti();
   pr.then(pv => { if (tok === AW.tok && mode === 'awards' && pv && player.ready) player.play(pv.url, { at: 0, fadeIn: .3 }); });
   setText('#k-ans', a.v);
-  setText('#k-track', a.s);
+  setText('#k-right', a.s);
   AW.lit = new Set(a.lit);
   setText('#k-go', AW.i + 1 < AW.list.length ? 'next award' : 'done');
-  AW.pub = { ...AW.pub, v: a.v, s: a.s, lit: a.lit }; publish();
+  AW.pub = { ...AW.pub, v: a.v, s: a.s, lit: a.room ? [] : a.lit }; publish();
 }
 const TS = { tok: 0, on: false };
 async function toastGo() {
@@ -2777,7 +2797,7 @@ async function toastGo() {
 function toastEnter() {
   TS.on = false;
   setText('#k-q', 'raise a glass.');
-  setText('#k-track', H.hostKey ? 'her forever song plays on one.' : 'flag the birthday baby (g) and her forever song plays too.');
+  setText('#k-track', ''); setText('#k-right', H.hostKey ? 'we count 3, 2, 1. then her forever song plays.' : 'flag the birthday baby (g) and her forever song plays too.');
 }
 function photoRect() {
   const p = pad();
@@ -2814,17 +2834,17 @@ async function singStart() {
   const picks = [];
   const seen = new Set();
   for (const g of DV.list) for (const p of g.picks) if (p.k === 't' && !seen.has(p.tid)) { seen.add(p.tid); picks.push(p); }
-  if (picks.length < 2) { setText('#k-q', 'needs two songs on the map.'); return; }
+  if (picks.length < 2) { setText('#k-q', 'needs two songs, not just artists. ask two people to add a song.'); return; }
   // the songs most people are likely to know: the biggest artists
   const pool = picks.sort((a, b) => M.artistFans(b.aid) - M.artistFans(a.aid)).slice(0, 7);
   const four = shuffle(pool).slice(0, 4);
   clearTexts();
   const opts = four.map((p, i) => ({ v: i, l: `${p.tt} · ${p.an}` }));
-  setText('#k-q', 'pick the singalong.');
+  setText('#k-q', 'which song do we all sing? vote on your phone.');
   showNames(opts.map(o => o.l));
   setText('#k-go', 'play the winner');
   tallySet('sing', 'round');
-  const rd = openRound('sing', 'pick the singalong', opts, { four });
+  const rd = openRound('sing', 'which song should we all sing?', opts, { four });
   rd.hp = '';
   hopRefresh();
   autoClose(rd, 20000, singPlay);
@@ -2854,13 +2874,13 @@ const GO = { walk: () => { ++walkLoopTok; walkLoop(); }, song: () => RD && RD.ty
   sing: () => RD && RD.type === 'sing' && RD.open ? singPlay() : singStart(),
   hops: () => RD && RD.type === 'hops' && RD.open ? hopsWalk() : RD && RD.type === 'hops' && !RD.res ? (WK.skip && WK.skip()) : hopsStart(),
   steer: () => RD && RD.type === 'steer' && RD.open ? steerChoose(null) : (ST.active ? null : steerStart()),
-  twin: () => RD && RD.type === 'twin' && RD.open ? twinReveal() : twinStart(),
+  twin: () => RD && RD.type === 'twin' && RD.open ? twinReveal() : RD && RD.type === 'twin' && RD.res ? enterMode($('#next-up').dataset.m || 'hops') : twinStart(),
   odd: () => RD && RD.type === 'odd' && RD.open ? oddReveal() : oddStart(),
   bday: () => RD && RD.type === 'far' && RD.open ? bdayWalk() : BD.prep || BD.final ? null : BD.active ? (WK.skip && WK.skip()) : bdayStart(),
   nth: () => RD && RD.type === 'nth' && RD.open ? nthReveal() : nthStart(),
   match: () => RD && RD.type === 'match' && RD.open ? matchReveal() : matchStart(),
   guilty: () => RD && RD.type === 'guilty' && RD.open ? guiltyReveal() : guiltyStart(),
-  bridge: () => RD && RD.type === 'bridge' && RD.open ? bridgeReveal() : bridgeStart(),
+  bridge: () => RD && RD.type === 'bridge' && !RD.open && !RD.res ? footNote('checking the bridges. one sec.') : RD && RD.type === 'bridge' && RD.open ? bridgeReveal() : bridgeStart(),
   teams: () => H.teams ? mergeTeams() : teamsSplit(),
   decade: () => RD && RD.type === 'decade' && RD.open ? decadeReveal() : decadeStart(),
   list: () => tourTok && tourIdx >= 0 ? stopTour() : playTour(0),
@@ -2940,7 +2960,7 @@ function enterMode(m, keepAudio) {
   if (m === 'walk') { fillWalkSelects(); GO.walk(); }
   if (m === 'list') renderList();
   if (m === 'teams') teamsTexts();
-  if (m === 'awards') { AW.i = -1; AW.lit = null; ++AW.tok; AW.pub = null; }
+  if (m === 'awards') { AW.i = -1; AW.lit = null; ++AW.tok; AW.pub = null; AW.rolling = false; }
   if (m === 'toast') { ++TS.tok; toastEnter(); }
   if (m === 'photo') photoEnter();
   tallySet(m, 'enter');
@@ -2955,7 +2975,8 @@ function setupModes() {
   $('#k-go').addEventListener('click', () => { const f = GO[mode]; if (f) f(); });
   $('#walk-go').addEventListener('click', () => {
     const a = H.guests.get($('#walk-a').value), b = H.guests.get($('#walk-b').value);
-    if (!a || !b || a === b) return;
+    if (!a || !b) return;
+    if (a === b) { footNote('pick two different people'); return; }
     manualPair = [a, b]; ++walkLoopTok; walkLoop();
   });
   $('#list-play').addEventListener('click', () => GO.list());
@@ -3003,7 +3024,21 @@ function handPoint(k, n) {
   renderBoard(); renderJoin(); saveSoon(); publish();
 }
 const hopsTxt = d => (Math.abs(d - Math.round(d)) < .05 ? String(Math.round(d)) : d.toFixed(1)) + ' step' + (Math.abs(d - 1) < .05 ? '' : 's');
+function fitRail() {
+  const pc = $('#p-cloud'), top = $('#top');
+  if (!pc || !top) return;
+  pc.classList.remove('fit1', 'fit2', 'fit3');
+  if (!wide()) return;
+  const lim = top.getBoundingClientRect().bottom + 14;
+  for (const c of ['fit1', 'fit2', 'fit3']) {
+    const r = pc.getBoundingClientRect();
+    if (!r.height || r.top >= lim) return;
+    pc.classList.add(c);
+  }
+}
+addEventListener('resize', () => requestAnimationFrame(fitRail));
 function renderSide() {
+  requestAnimationFrame(fitRail);
   const f = DV.facts, L = DV.list;
   // an empty room: the code to scan is the whole screen
   const lob = mode === 'cloud' && !L.length && wide() && !DEMO;
@@ -3016,9 +3051,9 @@ function renderSide() {
     box.append(fact('on the map', String(L.length), '', L.length ? 'one more and the map wakes up.' : wide() ? 'scan the code to get on the map.' : 'open join (j) and scan the code.'));
     return;
   }
-  box.append(fact('the middle of the room', L[f.center].n, 'mint'));
-  if (L.length >= 3 && f.outlier >= 0) box.append(fact('the wildcard', L[f.outlier].n, 'ice'));
-  if (f.bridge) box.append(fact('the bridge', M.artistName(f.bridge), 'ice', `links ${f.bridgeCount} pairs of you`));
+  box.append(fact('the middle of the room', L[f.center].n, 'mint', 'closest to everyone'));
+  if (L.length >= 3 && f.outlier >= 0) box.append(fact('the wildcard', L[f.outlier].n, 'ice', 'farthest from everyone'));
+  if (f.bridge) box.append(fact('the artist linking you', M.artistName(f.bridge), 'ice', `between ${f.bridgeCount} pairs of you`));
   const D = DV.D;
   pbox.append(
     fact('closest pair', `${L[f.closest[0]].n} + ${L[f.closest[1]].n}`, 'mint', `${Gr.score(D[f.closest[0]][f.closest[1]])} · ${hopsTxt(D[f.closest[0]][f.closest[1]])}`),
@@ -3036,7 +3071,7 @@ function footStats() {
   const s = Gr.size();
   const pend = M.pending();
   if (mode === 'teams' && H.teams) teamsTexts();
-  setText('#foot-stats', `${DV.list.length} on the map · ${s.nodes.toLocaleString()} artists mapped · ${s.links.toLocaleString()} links${pend && !(RD && RD.open) ? ` · ${pend} lookup${pend === 1 ? '' : 's'} waiting` : ''}`);
+  setText('#foot-stats', `${DV.list.length} on the map · ${s.nodes.toLocaleString()} artists mapped · ${s.links.toLocaleString()} links${pend && !(RD && RD.open) ? ` · still loading ${pend}` : ''}`);
   hopRefresh();
 }
 function hopRefresh() {
@@ -3045,8 +3080,8 @@ function hopRefresh() {
   if (RD.type === 'who') setText('#k-hop', `round ${songRound} · ${line}`);
   else if (RD.type === 'twin') setText('#k-hop', line);
   else if (RD.type === 'hops') setText('#k-hop', 'bets · ' + line);
-  else if (RD.type === 'steer') setText('#k-hop', `hop ${ST.steps + 1} · shortest ${ST.best} · ` + line);
-  else if (RD.type === 'odd' && OD.playing >= 0) setText('#k-hop', `${['one', 'two', 'three'][OD.playing]} · ` + line);
+  else if (RD.type === 'steer') setText('#k-hop', `step ${ST.steps + 1} · fewest possible: ${ST.best} · ` + line);
+  else if (RD.type === 'odd' && OD.playing >= 0) setText('#k-hop', `song ${OD.playing + 1} · ` + line);
   else if (RD.type === 'odd') setText('#k-hop', line);
   else if (RD.hp !== undefined) setText('#k-hop', RD.hp + line);
 }
@@ -3093,12 +3128,13 @@ function setupNav() {
     else if (e.key === ' ' || e.key === 'Enter') { if (e.target.closest('button')) return; e.preventDefault(); const f = GO[mode]; if (f) f(); }
     else if (e.key === 'n' || e.key === 'ArrowRight') {
       if (WK.skip) WK.skip();
+      else if (mode === 'odd' && OD.playing >= 0) return;
       else if (mode === 'walk') GO.walk();
       else if (mode === 'song' || mode === 'hops' || mode === 'twin' || mode === 'odd' || mode === 'nth' || mode === 'match' || mode === 'guilty' || mode === 'decade') GO[mode]();
     }
   });
   let idleT = 0;
-  const busy = () => !!((RD && RD.open) || (BD.active && !BD.final) || ST.active || (mode === 'hops' && RD && !RD.res));
+  const busy = () => !!((RD && RD.open) || (BD.active && !BD.final) || ST.active || (mode === 'hops' && RD && !RD.res) || (mode === 'bridge' && RD && RD.type === 'bridge' && !RD.open && !RD.res));
   const wake = () => { $('#host').classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => { if (wide() && matchMedia('(hover: hover)').matches) $('#host').classList.add('idle'); }, 6000); };
   document.addEventListener('mousemove', wake);
   document.addEventListener('pointerdown', wake);
@@ -3129,7 +3165,7 @@ function bigJoinText() {
   if ($('#bigjoin').classList.contains('hide')) return;
   const n = [...H.guests.values()].filter(g => g.src === 'p2p').length;
   const late = JOINS.slice(-3).reverse().map(j => j.n);
-  setText('#bj-n', n ? `${n} phone${n === 1 ? '' : 's'} in${late.length ? ` · just in: ${andList(late)}` : ''}` : 'be the first one in');
+  setText('#bj-n', (H.pwQr || DEMO ? '' : 'then type the password. ask the host. · ') + (n ? `${n} phone${n === 1 ? '' : 's'} in${late.length ? ` · just in: ${andList(late)}` : ''}` : 'be the first one in'));
 }
 function drawQR() {
   const qr = qrcode(0, 'M');
@@ -3555,7 +3591,7 @@ async function savePoster() {
   });
   c.font = '400 26px "IBM Plex Mono", monospace'; c.fillStyle = COL.faint;
   c.fillText('made from everyone’s picks. happy birthday.', 160, PH - 90);
-  oc.toBlob(b => { if (b) download(b, 'birthday-map.png'); }, 'image/png');
+  oc.toBlob(b => { if (b) { download(b, 'birthday-map.png'); footNote('poster saved to downloads'); } }, 'image/png');
   window.__party.lastPoster = { w: PW, h: PH, people: L.length };
 }
 
@@ -3666,7 +3702,7 @@ async function guestMain() {
     else if (!s && netFail) st.textContent = "found the room, but this network can't reach the screen. join the house wifi, then tap reload.";
     else if (!s) st.textContent = waited > 14 ? `no screen yet. the screen shows its room code at the top left. if it isn't ${K.code}, retype the password. if it is, join the house wifi and reload.` : 'looking for the screen';
     else st.textContent = `the screen: ${modeNames[s.mode] || s.mode}`;
-    { const hb = $('#g-how'), hw = s && s.hw; hb.classList.toggle('hide', !hw); const sig = hw ? hw.join('|') + (s.hs || '') : ''; if (hb.dataset.sig !== sig) { hb.dataset.sig = sig; hb.textContent = ''; if (hw) { hb.append(el('p', { class: 'field-h' }, `how ${hw[0]} works`)); const ol = el('ol', {}); hw.slice(1).forEach(t => ol.append(el('li', {}, String(t)))); hb.append(ol); if (s.hs) { const d = el('details', {}, el('summary', {}, 'the science')); d.append(el('p', {}, String(s.hs))); hb.append(d); } } } }
+    { const hb = $('#g-how'), hw = s && s.hw; hb.classList.toggle('hide', !hw); const sig = hw ? hw.join('|') + (s.hs || '') : ''; if (hb.dataset.sig !== sig) { hb.dataset.sig = sig; hb.textContent = ''; if (hw) { hb.append(el('p', { class: 'field-h' }, `${hw[0]}: how it works`)); const ol = el('ol', {}); hw.slice(1).forEach(t => ol.append(el('li', {}, String(t)))); hb.append(ol); if (s.hs) { const d = el('details', {}, el('summary', {}, 'the science')); d.append(el('p', {}, String(s.hs))); hb.append(d); } } } }
     $('#g-fix').classList.toggle('hide', !stuck);
     $('#g-bigcode').classList.toggle('hide', !stuck);
     setText('#g-bigcode', stuck ? `your code: ${K.code}` : '');
@@ -3691,12 +3727,14 @@ async function guestMain() {
       return;
     }
     if (!r) { box.classList.add('hide'); res.textContent = ''; return; }
+    if (r.open && r.type === 'twin' && !(s.guests || []).some(g => g.k === my)) { box.classList.add('hide'); res.classList.remove('ok'); res.textContent = 'no picks, no dot, so no twin yet. tap add picks to get one.'; return; }
     if (r.open) {
       box.classList.remove('hide');
       res.textContent = ''; res.classList.remove('ok');
       setText('#g-q', r.q);
       let opts = r.opts;
       if (!opts) opts = (s.guests || []).filter(g => !((r.type === 'twin' || r.type === 'guilty' || r.type === 'who') && g.k === my)).map(g => ({ v: g.k, l: g.n }));
+      if (r.type === 'guilty') opts = opts.filter(o => o.v !== my);
       const wrap = $('#g-opts');
       const sig = r.id + ':' + opts.map(o => o.v).join(',');
       if (wrap.dataset.sig !== sig) {
@@ -3712,9 +3750,10 @@ async function guestMain() {
       if (r.res && !$('#g-room').classList.contains('keeping')) {
         const got = my && (r.res.right || []).includes(my);
         const mine = r.type === 'twin' && r.res.tw && r.res.tw[my];
-        res.textContent = (mine ? `the map says your twin is ${mine}. ` : '') + String(r.res.text || '').replace(/[^.!?]$/, '$&.') + (voted[r.id] !== undefined ? (got ? ' you got a point.' : '') : '');
+        const np = +r.res.n || 1, said = r.type === 'hops' && voted[r.id] !== undefined ? ` you said ${+voted[r.id] === 7 ? '7 or more' : voted[r.id]}.` : '';
+        res.textContent = (mine ? `your twin: ${mine}.` : String(r.res.text || '').replace(/[^.!?]$/, '$&.')) + said + (voted[r.id] !== undefined ? (got ? (np > 1 ? ` you got ${np} points.` : ' you got a point.') : (r.res.right ? ' not this time.' : '')) : '');
         res.classList.toggle('ok', !!got);
-      } else res.textContent = '';
+      } else res.textContent = !r.res && (r.type === 'hops' || r.type === 'bridge') ? 'bets are in. watch the screen.' : '';
     }
   }
   let keepSig = '';
@@ -3733,7 +3772,7 @@ async function guestMain() {
     const row = (b, t) => ul.append(el('li', {}, el('b', {}, b), el('span', {}, t)));
     if (c.home) row(`${c.home} road${c.home === 1 ? '' : 's'}`, 'led to you tonight');
     if (c.tw) row(c.tw, 'your taste twin');
-    if (c.hp != null) row(c.hp === 0 ? 'zero steps' : `${c.hp} step${c.hp === 1 ? '' : 's'}`, 'from your pick to the birthday baby');
+    if (c.hp != null) row(c.hp === 0 ? 'zero steps' : `${c.hp} step${c.hp === 1 ? '' : 's'}`, 'from your music to the birthday baby\'s');
     if (c.sp) row(c.sp, 'your spot on the map');
     if (c.i < 0 && !c.home) row('no dot tonight', 'you played every round anyway. add picks any time to get one.');
     const pts = `${c.pt || 0} point${c.pt === 1 ? '' : 's'}`;
@@ -3741,8 +3780,8 @@ async function guestMain() {
     const bag = $('#gk-bag'); bag.textContent = '';
     const lk = (q, tid) => el('span', { class: 'a' }, el('a', { href: M.spotifyLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'spotify'), el('a', { href: M.appleLink(q, tid), target: '_blank', rel: 'noopener noreferrer' }, 'apple'));
     const gift = (h, t, s, q, tid) => bag.append(el('li', {}, el('span', { class: 't' }, el('span', {}, h), el('b', {}, t), s ? el('span', {}, s) : ''), lk(q, tid)));
-    if (c.gf) gift(c.i < 0 ? `a song from ${c.gf[3]}, the middle of the room` : `a song from ${c.gf[3]}, the closest to you`, String(c.gf[0]), c.gf[1] ? String(c.gf[1]) : 'artist', [c.gf[0], c.gf[1]].filter(Boolean).join(' '), +c.gf[2] || 0);
-    if (c.nw) gift(c.i < 0 ? 'the artist holding this room together' : 'new for you: nobody brought this one', String(c.nw[0]), c.i < 0 ? 'start here' : `next door to ${c.nw[1]}`, String(c.nw[0]), 0);
+    if (c.gf) gift(c.i < 0 ? `${c.gf[1] ? 'a song' : 'an artist'} from ${c.gf[3]}, the middle of the room` : `${c.gf[1] ? 'a song' : 'an artist'} from ${c.gf[3]}, the closest to you`, String(c.gf[0]), c.gf[1] ? String(c.gf[1]) : 'artist', [c.gf[0], c.gf[1]].filter(Boolean).join(' '), +c.gf[2] || 0);
+    if (c.nw) gift(c.i < 0 ? 'the artist holding this room together' : 'new for you: nobody brought this one', String(c.nw[0]), c.i < 0 ? 'start here' : `fans of ${c.nw[1]} also like this`, String(c.nw[0]), 0);
     bag.classList.toggle('hide', !bag.children.length);
     drawKeep(kp, c);
     if (first) setTimeout(() => { const f = $('#g-fin'); (f.classList.contains('hide') ? $('#g-keep') : f).scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 80);
@@ -3769,7 +3808,7 @@ async function guestMain() {
         if (!a.v) add('p', 'gf-s', 'and it goes to…');
         else { add('p', 'gf-big', a.v); add('p', 'gf-s', a.s); if (Array.isArray(a.lit) && a.lit.includes(my)) add('p', 'gf-you', 'that is you.'); }
       }
-    } else if (m === 'toast') { add('h2', '', 'glasses up.'); add('p', 'gf-big', 'happy birthday to the birthday baby.'); }
+    } else if (m === 'toast') { add('h2', '', 'glasses up.'); add('p', 'gf-big', 'happy birthday to the birthday baby.'); add('p', 'gf-s', 'count down with the big screen: 3, 2, 1.'); }
     else if (m === 'photo') add('h2', '', 'look at the screen.');
     else {
       // the screen sends its order; a screen without it still sent everyone's picks
@@ -3781,7 +3820,7 @@ async function guestMain() {
       if (!rows.length) add('p', 'gf-s', 'the playlist is on the screen. ask the birthday baby for the link.');
       else {
         add('p', 'field-h', 'the playlist');
-        add('h2', '', 'tap a song to hear it.');
+        add('h2', '', 'tap spotify or apple to hear one.');
         const ol = el('ol', { class: 'gf-list' });
         rows.forEach((r, i) => {
           const q = r.slice(0, 2).filter(Boolean).join(' '), tid = +r[2] || 0;
@@ -3804,7 +3843,7 @@ async function guestMain() {
     // you in the middle; what you brought, who you sit next to, and what you take home around you
     const N = pk.map(t => ({ k: 'you brought', t, c: 'ink' }));
     if (c.tw) N.push({ k: 'taste twin', t: c.tw, c: 'ice' });
-    if (c.gf) N.push({ k: 'a song for you', t: String(c.gf[0]), c: 'mint' });
+    if (c.gf) N.push({ k: c.gf[1] ? 'a song for you' : 'an artist for you', t: String(c.gf[0]), c: 'mint' });
     if (c.nw) N.push({ k: c.i < 0 ? 'links this room' : 'new for you', t: String(c.nw[0]), c: 'rose' });
     if (c.hp != null) N.push({ k: c.hp === 0 ? 'zero steps away' : `${c.hp} step${c.hp === 1 ? '' : 's'} away`, t: 'birthday baby', c: 'mint', ring: 1 });
     if (c.home) N.push({ k: `${c.home} road${c.home === 1 ? '' : 's'}`, t: 'led to you', c: 'mint', ring: 1 });
@@ -3865,7 +3904,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261123c');
+    const { openRoom } = await import('./sync.js?v=20261123d');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

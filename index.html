@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css?v=20261123c">
+<link rel="stylesheet" href="party.css?v=20261123d">
 </head>
 <body>
 <a id="boot-slow" href="">still loading. if nothing shows up, tap here to try again.</a>
@@ -111,7 +111,7 @@
       <button class="pill" id="list-copy">copy as text</button>
       <button class="pill hide" id="list-spotify" disabled title="needs a spotify client id, see README.txt">spotify playlist: needs a client id</button>
     </div>
-    <p class="fine" id="list-how">each pick sits next to the one fewest steps away (nearest neighbor, then 2-opt).</p>
+    <p class="fine" id="list-how">each pick sits next to the one most like it, so the music flows.</p>
     <ol id="list-ol" class="tour"></ol>
   </section>
 
@@ -136,7 +136,7 @@
       <h2 id="hw-title"></h2>
       <ol id="hw-steps"></ol>
       <p id="hw-sci" class="hw-sci"></p>
-      <p class="hw-how">any key to start · h brings this back</p>
+      <p class="hw-how">any key closes this · space starts · h brings it back</p>
     </div>
   </div>
 
@@ -238,7 +238,7 @@
       <p class="note">this is yours from tonight: you in the middle, wired to your night, with two things to listen to next. screenshot it to keep it.</p>
     </section>
     <p class="g-score" id="g-score"></p>
-    <p class="note" id="g-baghint">your goodie bag opens here at the toast, near the end.</p>
+    <p class="note" id="g-baghint">your goodie bag opens here at the end of the night.</p>
     <p class="field-h g-mine-h">what you brought</p>
     <ul id="g-mine" class="mine"></ul>
     <button class="pill small" id="g-edit">change my picks</button>
@@ -276,6 +276,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=20261123c"></script>
+<script type="module" src="app.js?v=20261123d"></script>
 </body>
 </html>

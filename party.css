@@ -424,3 +424,12 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 @media (min-width: 861px) and (max-height: 700px) { #foot-stats { display: none; } }
 
 #g-room.keeping #g-baghint { display: none; }
+
+#standby { position: fixed; inset: 0; z-index: 60; background: var(--night); display: flex; align-items: center; justify-content: center; padding: 5vh 6vw; }
+#standby.hide { display: none; }
+#standby .sb-in { max-width: min(900px, 88vw); }
+#standby .hw-k { font: 500 14px/1 var(--mono); letter-spacing: .14em; color: var(--sun); margin: 0 0 18px; }
+#standby h2 { font: 600 clamp(28px, 4vw, 64px)/1.05 var(--sans); letter-spacing: -.02em; margin: 0 0 18px; }
+#standby p { font: 500 clamp(16px, 1.5vw, 24px)/1.4 var(--sans); color: var(--dim); margin: 0 0 28px; }
+#standby .sb-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
+#standby a.pill { text-decoration: none; display: inline-flex; align-items: center; }

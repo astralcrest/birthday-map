@@ -24,8 +24,10 @@ export async function openRoom(password, roomId) {
   // the room's backup: the host writes it, every phone keeps a copy, a new host asks for the newest one
   const vault = room.makeState('vault', null, { maxBytes: 64000 });
   const need = room.makeState('need', null, { maxBytes: 200 });
+  // a second screen asks whether the first is still there
+  const dare = room.makeState('dare', null, { maxBytes: 200 });
   const keep = room.makeUserState('keep', null, { maxBytes: 64000 });
   const self = await room.getSelf();
   const relaysUp = () => { try { return Object.values(getRelaySockets() || {}).filter(w => w && w.readyState === 1).length; } catch (e) { return 1; } };
-  return { room, guest, vote, reply, show, vault, need, keep, self, relaysUp, onNetError };
+  return { room, guest, vote, reply, show, vault, need, dare, keep, self, relaysUp, onNetError };
 }

@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://itunes.apple.com https://open.spotify.com https://www.youtube.com wss:; img-src 'self' data: blob: https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; media-src 'self' blob: https://*.dzcdn.net; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>a birthday map</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="party.css?v=20261121g">
+<link rel="stylesheet" href="party.css?v=20261123b">
 </head>
 <body>
 <a id="boot-slow" href="">still loading. if nothing shows up, tap here to try again.</a>
@@ -23,6 +23,7 @@
       <button type="submit" class="pill solid" id="gate-go">enter</button>
     </form>
     <p class="note" id="gate-note">one password, one room. ask the host.</p>
+    <p class="note hide" id="gate-guest">this link runs the big screen. here to play? <a href="./">open the guest page</a></p>
   </div>
 </main>
 
@@ -45,7 +46,7 @@
       <button data-mode="odd"><b>3</b>odd one out</button>
       <button data-mode="steer"><b>4</b>steer</button>
       <button data-mode="twin"><b>5</b>taste twin</button>
-      <button data-mode="hops"><b>6</b>how many hops</button>
+      <button data-mode="hops"><b>6</b>how far apart</button>
       <button data-mode="sing"><b>7</b>singalong</button>
       <button id="more-btn" class="hide" aria-expanded="false" aria-controls="more">more games</button>
     </div>
@@ -56,7 +57,7 @@
       <button data-mode="photo"><b>p</b>the photo</button>
     </div>
     <div id="more" class="hide">
-      <button data-mode="nth">name that hop</button>
+      <button data-mode="nth">name that step</button>
       <button data-mode="match">matchmaker</button>
       <button data-mode="guilty">guilty pleasure</button>
       <button data-mode="bridge">bridge builder</button>
@@ -100,7 +101,7 @@
 
   <section id="p-pairs" class="panel">
     <div class="facts" id="pairs-facts"></div>
-    <p class="fine">score = 100 &times; (1 &minus; average hops to the other person&rsquo;s nearest pick &divide; 7). hops come from deezer&rsquo;s related-artist lists. a toy, not a measurement.</p>
+    <p class="fine">score = 100 &times; (1 &minus; average steps to the other person&rsquo;s nearest pick &divide; 7). steps come from deezer&rsquo;s related-artist lists. a toy, not a measurement.</p>
     <p class="track" id="pairs-hover"></p>
   </section>
 
@@ -110,7 +111,7 @@
       <button class="pill" id="list-copy">copy as text</button>
       <button class="pill hide" id="list-spotify" disabled title="needs a spotify client id, see README.txt">spotify playlist: needs a client id</button>
     </div>
-    <p class="fine" id="list-how">each pick sits next to the one fewest hops away (nearest neighbor, then 2-opt).</p>
+    <p class="fine" id="list-how">each pick sits next to the one fewest steps away (nearest neighbor, then 2-opt).</p>
     <ol id="list-ol" class="tour"></ol>
   </section>
 
@@ -121,6 +122,14 @@
     <p class="how">host: g opens the guest list · j brings this code back any time</p>
   </div>
 
+  <div id="standby" class="hide" role="alertdialog" aria-label="this screen is paused">
+    <div class="sb-in">
+      <p class="hw-k">paused</p>
+      <h2>another screen is already running this party.</h2>
+      <p>only one screen can run the games, so this one has stopped. the phones follow the other one.</p>
+      <p class="sb-row"><a class="pill solid" id="standby-guest" href="./">I&rsquo;m a guest: let me play</a><button type="button" class="pill" id="standby-take">run the games from here instead</button></p>
+    </div>
+  </div>
   <div id="howcard" class="hide" role="dialog" aria-label="how this game works">
     <div class="hw-in">
       <p class="hw-k">how this works</p>
@@ -267,6 +276,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=20261121g"></script>
+<script type="module" src="app.js?v=20261123b"></script>
 </body>
 </html>

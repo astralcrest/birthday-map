@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261123b';
-import * as Gr from './graph.js?v=20261123b';
-import { Player } from './audio.js?v=20261123b';
+import * as M from './music.js?v=20261123c';
+import * as Gr from './graph.js?v=20261123c';
+import { Player } from './audio.js?v=20261123c';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -87,6 +87,16 @@ async function gate() {
   setText('#gate-role', ROLE === 'host' ? 'host' : 'guest');
   if (ROLE === 'host') { setText('#gate-note', 'choose any password. guests type the same one.'); if (matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 600) $('#gate-guest').classList.remove('hide'); }
   $('#gate-pw').focus();
+  let lastTry = '';
+  // true when a sealed list on this site opens with this password, or when there is nothing to check against
+  const knownRoom = async k => {
+    try {
+      const r = await fetch('guests.json', { cache: 'no-store' }); if (!r.ok) return true;
+      const j = await r.json(), boxes = Array.isArray(j) ? j : [j]; if (!boxes.length) return true;
+      for (const box of boxes) { try { await unseal(k.key, box); return true; } catch (e) { /* not this one */ } }
+      return false;
+    } catch (e) { return true; }
+  };
   return new Promise(res => {
     $('#gate-form').addEventListener('submit', async e => {
       e.preventDefault();
@@ -95,6 +105,13 @@ async function gate() {
       $('#gate-go').disabled = true;
       setText('#gate-go', 'opening');
       const k = await derive(pw);
+      // a typo opens an empty room of its own: stop it here unless the same thing is entered twice
+      if (lastTry !== k.norm && !(await knownRoom(k))) {
+        lastTry = k.norm;
+        setText('#gate-note', ROLE === 'host' ? 'no saved party uses that password. check the spelling. to start a new empty room with it, press enter again.' : 'that password does not match the party. check the spelling and try again. (sure it is right? press enter again.)');
+        $('#gate-note').classList.add('warn'); $('#gate-go').disabled = false; setText('#gate-go', 'enter'); $('#gate-pw').focus();
+        return;
+      }
       try { sessionStorage.setItem('party.pw', k.norm); } catch (e2) { /* blocked */ }
       $('#gate').classList.add('hide');
       res(k);
@@ -604,7 +621,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261123b').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261123c').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -648,7 +665,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261123b');
+    const { openRoom } = await import('./sync.js?v=20261123c');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -697,7 +714,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123b').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123c').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -3848,7 +3865,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261123b');
+    const { openRoom } = await import('./sync.js?v=20261123c');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');
@@ -3856,7 +3873,7 @@ async function guestMain() {
   setInterval(chip, 4000); addEventListener('online', chip); addEventListener('offline', chip);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { chip(); if (me.joined) wakeLock(); } });
   if (NETg.onNetError) NETg.onNetError(e => { if (e && e.code === 'peer-connect-failed' && !lastShow) { netFail = true; render(); } });
-  NETg.show.onChange(v => { if (v && lastShow && v.hid && v.hid === lastShow.hid && v.t < lastShow.t) return; lastShow = v; netFail = false; render(); if (!$('#g-form').classList.contains('hide')) dupCheck(); });
+  NETg.show.onChange(v => { if (v && lastShow && v.hid && v.hid === lastShow.hid && v.t < lastShow.t) { window.__stale = (window.__stale || 0) + 1; return; } lastShow = v; netFail = false; render(); if (!$('#g-form').classList.contains('hide')) dupCheck(); });
   // keep the host's sealed backup; hand it to a host that comes back with less
   const vKey = 'party.vault.' + K.roomId;
   let mine = null, offerT = 0;

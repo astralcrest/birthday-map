@@ -433,3 +433,4 @@ textarea { font: 400 14px/1.4 var(--mono); color: var(--ink); background: var(--
 #standby p { font: 500 clamp(16px, 1.5vw, 24px)/1.4 var(--sans); color: var(--dim); margin: 0 0 28px; }
 #standby .sb-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
 #standby a.pill { text-decoration: none; display: inline-flex; align-items: center; }
+#gate-note.warn { color: var(--sun); }

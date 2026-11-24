@@ -1,6 +1,6 @@
-import * as M from './music.js?v=20261123d';
-import * as Gr from './graph.js?v=20261123d';
-import { Player } from './audio.js?v=20261123d';
+import * as M from './music.js?v=20261123e';
+import * as Gr from './graph.js?v=20261123e';
+import { Player } from './audio.js?v=20261123e';
 import qrcode from './vendor/qrcode.mjs';
 document.documentElement.classList.add('booted');
 
@@ -623,7 +623,7 @@ async function hostMain() {
   else {
     await restore();
     // the demo's neighborhood doubles as a warm start for common artists
-    fetch('seed.json?v=20261123d').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
+    fetch('seed.json?v=20261123e').then(r => r.ok ? r.json() : null).then(d => { if (d) { M.seed(d); dataChanged(); } }).catch(() => {});
   }
   setupStage();
   setupNav();
@@ -667,7 +667,7 @@ async function startNet() {
   setText('#net-tag', 'connecting');
   if (typeof RTCPeerConnection !== 'function') { setText('#net-tag', 'offline: add people by hand'); return; }
   try {
-    const { openRoom } = await import('./sync.js?v=20261123d');
+    const { openRoom } = await import('./sync.js?v=20261123e');
     NET = await openRoom(K.norm, K.roomId);
   } catch (e) {
     setText('#net-tag', 'offline: add people by hand');
@@ -716,7 +716,7 @@ async function startNet() {
 }
 
 async function loadDemo() {
-  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123d').then(r => r.ok ? r.json() : null).catch(() => null)]);
+  const [people, seed] = await Promise.all([fetch('demo.json').then(r => r.json()), fetch('seed.json?v=20261123e').then(r => r.ok ? r.json() : null).catch(() => null)]);
   if (seed) M.seed(seed);
   const n = clamp(parseInt(Q.get('demo'), 10) || 14, 2, people.length);
   const byName = new Map(Object.entries(seed && seed.art || {}).map(([id, v]) => [String(v[0]).toLowerCase(), [+id, v[0]]]));
@@ -2637,7 +2637,7 @@ const HOW = {
   awards: ['the map hands out prizes.', 'the middle of the room, the wildcard, most points and more.', 'one award at a time, on the big screen.'],
   bday: ['every one of you gets a path of similar artists to the birthday baby.', 'on your phone, guess whose path is shortest.', 'then every path lights up.'],
   toast: ['get a glass.', 'we count down together.', 'then: happy birthday.'],
-  photo: ['everyone on the map, one last time.', 'look at the screen.', 'your phone now holds your goodie bag.'],
+  photo: ['everyone on the map, one last time.', 'group photo: get in front of the screen.', 'your goodie bag is on your phone now.'],
   list: ['every song from tonight, in one order.', 'the screen plays them one by one.', 'the same list is on your phone, with spotify and apple links.'],
   pairs: ['every two of you get a score.', 'it counts the steps between your picks.', 'fewer steps, higher score.'],
   nth: ['we pick two of you and link your music through similar artists.', 'a song plays from an artist somewhere on that chain.', 'on your phone, tap whose music it is closer to. a right guess is a point. a fast one is two.'],
@@ -3809,7 +3809,7 @@ async function guestMain() {
         else { add('p', 'gf-big', a.v); add('p', 'gf-s', a.s); if (Array.isArray(a.lit) && a.lit.includes(my)) add('p', 'gf-you', 'that is you.'); }
       }
     } else if (m === 'toast') { add('h2', '', 'glasses up.'); add('p', 'gf-big', 'happy birthday to the birthday baby.'); add('p', 'gf-s', 'count down with the big screen: 3, 2, 1.'); }
-    else if (m === 'photo') add('h2', '', 'look at the screen.');
+    else if (m === 'photo') { add('h2', '', 'group photo.'); add('p', 'gf-s', 'get in front of the big screen and smile.'); }
     else {
       // the screen sends its order; a screen without it still sent everyone's picks
       let rows = Array.isArray(s.pl) ? s.pl.filter(r => Array.isArray(r) && r[0]) : null;
@@ -3904,7 +3904,7 @@ async function guestMain() {
   setText('#g-net', 'connecting');
   const ticker = setInterval(() => { waited++; render(); if (lastShow) clearInterval(ticker); }, 1000);
   try {
-    const { openRoom } = await import('./sync.js?v=20261123d');
+    const { openRoom } = await import('./sync.js?v=20261123e');
     NETg = await openRoom(K.norm, K.roomId);
   } catch (e) { setText('#g-net', 'offline'); render(); return; }
   setText('#g-net', 'live'); $('#g-net').classList.add('ok');

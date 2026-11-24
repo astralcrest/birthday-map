@@ -421,9 +421,29 @@ export async function genre(aid) {
   return g;
 }
 
-// release year of a pick: the track's own date, or the artist's top track for an artist pick (0 = not found)
+// release year of a pick: the earliest date either store has for that exact song, so a remaster does not move the decade (0 = not found)
+const yn = x => String(x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').replace(/\s+-\s+.*$/, '').replace(/[^a-z0-9]+/g, '');
+async function itunesYear(an, tt) {
+  const A = yn(an), T = yn(tt);
+  if (!A || !T) return 0;
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 5000);
+  try {
+    const r = await fetch('https://itunes.apple.com/search?' + new URLSearchParams({ term: an + ' ' + tt, entity: 'song', limit: '25' }), { referrerPolicy: 'no-referrer', credentials: 'omit', signal: ac.signal });
+    if (!r.ok) return 0;
+    const d = await r.json();
+    let y = 0;
+    for (const x of d.results || []) {
+      if (yn(x.trackName) !== T) continue;
+      const xa = yn(x.artistName);
+      if (xa !== A && !xa.includes(A) && !A.includes(xa)) continue;
+      const m = /^(\d{4})/.exec(x.releaseDate || ''), v = m ? +m[1] : 0;
+      if (v > 1900 && (!y || v < y)) y = v;
+    }
+    return y;
+  } catch (e) { return 0; } finally { clearTimeout(t); }
+}
 export async function yearOf(p) {
-  const key = p.tid ? 't' + p.tid : 'a' + p.aid;
+  const key = 'y2' + (p.tid ? 't' + p.tid : 'a' + p.aid);
   if (mem.yr[key] !== undefined) return mem.yr[key];
   let tid = p.tid;
   if (!tid) { const tops = await top(p.aid, 'lo'); tid = tops[0] && tops[0].tid; }
@@ -431,7 +451,9 @@ export async function yearOf(p) {
   const t = await dz('track/' + tid, {}, 'lo');
   if (!t || !t.id) return 0;
   const m = /^(\d{4})/.exec(t.release_date || '');
-  const y = m && +m[1] > 1900 ? +m[1] : 0;
+  let y = m && +m[1] > 1900 ? +m[1] : 0;
+  const iy = await itunesYear((t.artist && t.artist.name) || p.an, t.title || p.tt);
+  if (iy && (!y || iy < y)) y = iy;
   mem.yr[key] = y; saveSoon();
   return y;
 }
